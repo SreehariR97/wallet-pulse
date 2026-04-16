@@ -79,7 +79,7 @@ export default async function LandingPage() {
       </main>
 
       <footer className="border-t border-border/50 py-8 text-center text-sm text-muted-foreground">
-        Built with Next.js · Drizzle · SQLite. Your data never leaves your machine.
+        Built with Next.js · Drizzle · Postgres. Your data, your database.
       </footer>
     </div>
   );
@@ -90,6 +90,6 @@ const FEATURES = [
   { icon: PieChart, title: "Full analytics", desc: "Monthly comparisons, spending heatmaps, and payment method distributions." },
   { icon: Target, title: "Budgets that stick", desc: "Set per-category or overall budgets with color-coded progress and alerts." },
   { icon: Shield, title: "Privacy-first", desc: "100% local. Your financial data lives on your machine, not in the cloud." },
-  { icon: Zap, title: "Lightning fast", desc: "Built on SQLite + Next.js 14 for instant navigation and zero lag." },
+  { icon: Zap, title: "Lightning fast", desc: "Built on Postgres + Next.js 14 for instant navigation and zero lag." },
   { icon: Wallet, title: "Import & export", desc: "CSV import with column mapping. Export all your data as CSV or JSON, anytime." },
 ];

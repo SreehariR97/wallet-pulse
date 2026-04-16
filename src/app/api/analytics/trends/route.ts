@@ -14,10 +14,15 @@ export async function GET(req: Request) {
   const fromDate = from ? new Date(from + "T00:00:00.000Z") : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const toDate = to ? new Date(to + "T23:59:59.999Z") : new Date();
 
-  // Postgres uses to_char() for formatted date output, with different tokens
-  // than SQLite's strftime: YYYY-MM-DD / YYYY-MM.
-  const fmt = granularity === "monthly" ? "YYYY-MM" : "YYYY-MM-DD";
-  const bucket = sql<string>`to_char(${transactions.date}, ${fmt})`;
+  // Postgres uses to_char() for formatted date output. We must inline the
+  // format literal (not parameterize it) so the expression in SELECT and
+  // GROUP BY is byte-identical — otherwise Postgres rejects the query with
+  // "column must appear in the GROUP BY clause" because parameter bindings
+  // differ between the two references.
+  const bucket =
+    granularity === "monthly"
+      ? sql<string>`to_char(${transactions.date}, 'YYYY-MM')`
+      : sql<string>`to_char(${transactions.date}, 'YYYY-MM-DD')`;
 
   const rows = await db
     .select({

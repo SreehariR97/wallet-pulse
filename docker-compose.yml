@@ -1,0 +1,32 @@
+# One-command local Postgres for WalletPulse development.
+#
+#   docker compose up -d postgres     # start
+#   docker compose down               # stop
+#   docker compose down -v            # stop and nuke the data volume
+#
+# Then set your .env.local:
+#   DATABASE_URL=postgres://walletpulse:walletpulse@localhost:5432/walletpulse
+#
+# Apply the schema once: pnpm db:migrate
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: walletpulse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: walletpulse
+      POSTGRES_PASSWORD: walletpulse
+      POSTGRES_DB: walletpulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - walletpulse-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U walletpulse -d walletpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  walletpulse-pgdata:

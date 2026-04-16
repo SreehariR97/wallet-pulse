@@ -7,8 +7,9 @@ Privacy-first personal expense tracker. Production-grade Mint/YNAB-style app. De
 - **Next.js 14** (App Router) + TypeScript
 - **Tailwind CSS** + shadcn/ui (customized dark slate + indigo/cyan palette, Plus Jakarta Sans)
 - **Drizzle ORM** + **Postgres** via `@neondatabase/serverless` (HTTP driver — no connection pool issues on Lambda)
-  - `better-sqlite3` is an **optionalDependency** — Vercel can skip it silently when no prebuilt binary exists for the runtime's Node ABI. `scripts/sqlite-to-postgres.ts` uses a dynamic import and prints a friendly install hint if it's missing.
-  - `pg` is used by `src/lib/db/migrate.ts` since the migrator needs transactional DDL.
+  - Runtime queries: `drizzle-orm/neon-http` with a **lazy Proxy** client in `src/lib/db/index.ts`. The client is constructed on first property access, so routes that don't touch the DB (landing page, login form render) don't crash if DATABASE_URL is misconfigured.
+  - Migrator: `pg` + `drizzle-orm/node-postgres/migrator` in `src/lib/db/migrate.ts` (the HTTP driver can't run transactional DDL).
+  - Local dev Postgres: `docker-compose.yml` ships a Postgres 16 container. Bring it up with `docker compose up -d postgres`.
 - **Node 22.x** pinned in `engines` — Vercel uses this exact runtime, which has prebuilt binaries for every native dep we might optionally install.
 - **NextAuth v5** (credentials provider, JWT strategy, split edge-safe config)
 - **Zustand** for client state (categories store)

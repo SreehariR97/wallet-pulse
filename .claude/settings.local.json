@@ -30,7 +30,10 @@
       "Bash(security find-generic-password:*)",
       "Bash(lsof -nP -iTCP:3000 -sTCP:LISTEN)",
       "Bash(ps -p 3860 -o command=)",
-      "Bash(kill 3860)"
+      "Bash(kill 3860)",
+      "Bash(docker --version)",
+      "Bash(docker info:*)",
+      "Bash(docker exec:*)"
     ]
   }
 }

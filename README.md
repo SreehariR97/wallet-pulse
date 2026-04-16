@@ -18,7 +18,7 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on mo
 
 ## Highlights
 
-- **Privacy by design** — data never leaves your machine. Single-file SQLite database, no telemetry, no cloud.
+- **Privacy by design** — your data lives in your own Postgres database (local or Neon), no telemetry, no third-party aggregators, no bank linking.
 - **Full CRUD workflow** for transactions, categories, and budgets, with bulk operations and advanced filtering.
 - **Rich analytics** — trend charts, category breakdowns, spending heatmap, month-over-month comparison, payment-method distribution.
 - **Budgets with alerts** — per-category or overall, with progress bars that flip to warning/destructive when you exceed them.
@@ -145,7 +145,7 @@ The demo user ships with a handful of transactions and two budgets (Groceries $4
 | `pnpm db:push` | Push the schema directly without generating a migration (dev-only) |
 | `pnpm db:studio` | Open Drizzle Studio on port 4983 to browse the DB |
 | `pnpm db:seed` | Seed default categories + demo user |
-| `pnpm db:migrate-from-sqlite` | One-shot: copy an existing `data/walletpulse.db` into the configured Postgres DB |
+| `pnpm db:bootstrap-dev` | Create demo + sample users with seeded transactions (one-shot, idempotent) |
 
 ---
 
@@ -301,9 +301,9 @@ WalletPulse is built for Vercel's serverless runtime. End-to-end in ~5 minutes:
 
 5. **Deploy**. Vercel auto-builds on every push to `main`.
 
-#### Why not file-based SQLite on Vercel?
+#### Why Postgres on a serverless platform?
 
-Vercel runs each request in a serverless function with a read-only filesystem (except for ephemeral `/tmp`), and native modules like `better-sqlite3` can't be prebuilt for its exact Node ABI. That's why WalletPulse ships with Postgres: `@neondatabase/serverless` uses HTTP instead of a TCP socket, so every request gets a fresh connection in ~20ms without any pool exhaustion.
+Serverless functions spin up cold and go away quickly, so traditional TCP connection pools are a liability. `@neondatabase/serverless` uses plain HTTP instead of a long-lived TCP socket, so every request gets a fresh connection in ~20ms without any pool exhaustion. Combined with Neon's auto-suspend, you pay ~$0 for low-traffic personal apps.
 
 ### Alternative: self-host on a VPS
 
@@ -314,17 +314,15 @@ If you'd rather run it yourself on a Railway / Fly / VPS:
 3. Set the same env vars as above.
 4. `pnpm db:migrate`, then `pnpm start` behind nginx / Caddy / Cloudflare Tunnel.
 
-### Migrating existing SQLite data
+### Bootstrapping demo data
 
-If you were running an earlier SQLite version and want to preserve your transactions, the repo ships with a one-shot helper. `better-sqlite3` is an **optional** dependency (so Vercel builds never try to compile it) — install it locally just for this migration:
+For a fully-loaded local playground with realistic transactions, run:
 
 ```bash
-pnpm add -D better-sqlite3
-SQLITE_PATH=./data/walletpulse.db DATABASE_URL="postgres://..." pnpm db:migrate-from-sqlite
-pnpm remove better-sqlite3   # optional cleanup once you're done
+pnpm db:bootstrap-dev
 ```
 
-The script is idempotent — re-runs skip rows that are already present.
+This creates the demo account (`demo@walletpulse.test` / `demo123`) plus a sample `sree@gmail.com` user, seeds default categories, and loads ~40 sample transactions covering every transaction type (income, expense, loans, repayments). It's idempotent — re-running won't duplicate data.
 
 ---
 
