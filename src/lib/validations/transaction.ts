@@ -1,6 +1,14 @@
 import { z } from "zod";
 
-export const transactionTypeEnum = z.enum(["expense", "income", "transfer"]);
+export const transactionTypeEnum = z.enum([
+  "expense",
+  "income",
+  "transfer",
+  "loan_given",
+  "loan_taken",
+  "repayment_received",
+  "repayment_made",
+]);
 export const paymentMethodEnum = z.enum(["cash", "credit_card", "debit_card", "bank_transfer", "upi", "other"]);
 export const recurringFrequencyEnum = z.enum(["daily", "weekly", "monthly", "yearly"]);
 

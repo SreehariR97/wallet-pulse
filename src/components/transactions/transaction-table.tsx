@@ -8,8 +8,22 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { cn, dateFromSeconds, formatCurrency, paymentMethodLabel } from "@/lib/utils";
-import type { TransactionListItem } from "@/types";
+import { cn, dateFromSeconds, formatCurrency, paymentMethodLabel, isInflow, isOutflow, isLoanType, transactionTypeLabel } from "@/lib/utils";
+import type { TransactionListItem, TxType } from "@/types";
+
+function amountColorClass(type: TxType): string {
+  if (type === "income" || type === "repayment_received") return "text-success";
+  if (type === "expense" || type === "repayment_made") return "text-destructive";
+  if (type === "loan_given") return "text-warning";
+  if (type === "loan_taken") return "text-primary";
+  return "text-foreground";
+}
+
+function amountSign(type: TxType): string {
+  if (isInflow(type)) return "+";
+  if (isOutflow(type)) return "-";
+  return "";
+}
 
 type SortKey = "date" | "amount" | "description" | "createdAt";
 type SortOrder = "asc" | "desc";
@@ -109,11 +123,20 @@ export function TransactionTable({
                   <td
                     className={cn(
                       "px-3 py-3 text-right font-mono font-semibold tabular-nums",
-                      t.type === "income" ? "text-success" : t.type === "expense" ? "text-destructive" : "text-foreground"
+                      amountColorClass(t.type)
                     )}
                   >
-                    {t.type === "income" ? "+" : t.type === "expense" ? "-" : ""}
-                    {formatCurrency(t.amount, t.currency ?? currency)}
+                    <div className="flex flex-col items-end leading-tight">
+                      <span>
+                        {amountSign(t.type)}
+                        {formatCurrency(t.amount, t.currency ?? currency)}
+                      </span>
+                      {isLoanType(t.type) && (
+                        <span className="text-[10px] font-normal uppercase tracking-wider opacity-70">
+                          {transactionTypeLabel(t.type)}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <DropdownMenu>

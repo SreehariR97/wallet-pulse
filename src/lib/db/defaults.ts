@@ -2,7 +2,7 @@ export const DEFAULT_CATEGORIES: Array<{
   name: string;
   icon: string;
   color: string;
-  type: "expense" | "income";
+  type: "expense" | "income" | "loan";
 }> = [
   { name: "Salary", icon: "💰", color: "#22C55E", type: "income" },
   { name: "Freelance", icon: "💻", color: "#3B82F6", type: "income" },
@@ -22,4 +22,7 @@ export const DEFAULT_CATEGORIES: Array<{
   { name: "Gifts & Donations", icon: "🎁", color: "#FB923C", type: "expense" },
   { name: "Insurance", icon: "🛡️", color: "#64748B", type: "expense" },
   { name: "Miscellaneous", icon: "📦", color: "#78716C", type: "expense" },
+  // Loan-tracking defaults — used for loan_given, loan_taken, repayment_received, repayment_made
+  { name: "Friends & Family", icon: "🤝", color: "#A855F7", type: "loan" },
+  { name: "Personal Loan", icon: "🏦", color: "#6366F1", type: "loan" },
 ];

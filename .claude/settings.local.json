@@ -27,7 +27,10 @@
       "Bash(lsof -nP -iTCP -sTCP:LISTEN)",
       "Bash(lsof -nP -p 8709 -iTCP -sTCP:LISTEN)",
       "Bash(security find-internet-password:*)",
-      "Bash(security find-generic-password:*)"
+      "Bash(security find-generic-password:*)",
+      "Bash(lsof -nP -iTCP:3000 -sTCP:LISTEN)",
+      "Bash(ps -p 3860 -o command=)",
+      "Bash(kill 3860)"
     ]
   }
 }

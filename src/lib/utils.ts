@@ -55,6 +55,50 @@ export function paymentMethodLabel(v: string): string {
   return PAYMENT_METHOD_LABELS[v] ?? v;
 }
 
+export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
+  expense: "Expense",
+  income: "Income",
+  transfer: "Transfer",
+  loan_given: "Loan Given",
+  loan_taken: "Loan Taken",
+  repayment_received: "Repayment In",
+  repayment_made: "Repayment Out",
+};
+
+export function transactionTypeLabel(v: string): string {
+  return TRANSACTION_TYPE_LABELS[v] ?? v;
+}
+
+// Types where money flows INTO the user's wallet
+const INFLOW_TYPES = new Set(["income", "loan_taken", "repayment_received"]);
+// Types where money flows OUT of the user's wallet
+const OUTFLOW_TYPES = new Set(["expense", "loan_given", "repayment_made"]);
+// Loan-related types (don't count as real income/expense)
+const LOAN_TYPES = new Set(["loan_given", "loan_taken", "repayment_received", "repayment_made"]);
+
+export function isInflow(type: string): boolean {
+  return INFLOW_TYPES.has(type);
+}
+export function isOutflow(type: string): boolean {
+  return OUTFLOW_TYPES.has(type);
+}
+export function isLoanType(type: string): boolean {
+  return LOAN_TYPES.has(type);
+}
+
+/**
+ * Which category type should a given transaction type be paired with?
+ * - income / loan_taken / repayment_received map to "income" (conceptually inflows) — BUT loans get their own category type
+ * - expense / loan_given / repayment_made map to "expense" — BUT loans get their own category type
+ *
+ * All four loan-related transaction types use the "loan" category type.
+ */
+export function categoryTypeForTransactionType(type: string): "expense" | "income" | "loan" {
+  if (LOAN_TYPES.has(type)) return "loan";
+  if (type === "income") return "income";
+  return "expense";
+}
+
 export const CURRENCIES = [
   { code: "USD", symbol: "$", name: "US Dollar" },
   { code: "EUR", symbol: "€", name: "Euro" },

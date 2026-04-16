@@ -17,7 +17,25 @@ type ImportRow = {
 };
 
 const PAYMENT_METHODS = new Set(["cash", "credit_card", "debit_card", "bank_transfer", "upi", "other"]);
-const TYPES = new Set(["expense", "income", "transfer"]);
+const TYPES = new Set([
+  "expense",
+  "income",
+  "transfer",
+  "loan_given",
+  "loan_taken",
+  "repayment_received",
+  "repayment_made",
+]);
+const LOAN_TYPES = new Set(["loan_given", "loan_taken", "repayment_received", "repayment_made"]);
+
+type TxTypeSql =
+  | "expense"
+  | "income"
+  | "transfer"
+  | "loan_given"
+  | "loan_taken"
+  | "repayment_received"
+  | "repayment_made";
 
 export async function POST(req: Request) {
   const auth = await requireUser();
@@ -33,6 +51,7 @@ export async function POST(req: Request) {
   const catByName = new Map(userCats.map((c) => [c.name.toLowerCase(), c]));
   const fallbackExpense = userCats.find((c) => c.type === "expense" && c.name === "Miscellaneous") ?? userCats.find((c) => c.type === "expense");
   const fallbackIncome = userCats.find((c) => c.type === "income");
+  const fallbackLoan = userCats.find((c) => c.type === "loan");
 
   const inserts: { id: string; date: Date; amount: number; description: string }[] = [];
   const errors: { row: number; error: string }[] = [];
@@ -56,7 +75,11 @@ export async function POST(req: Request) {
       if (match) categoryId = match.id;
     }
     if (!categoryId) {
-      const fb = type === "income" ? fallbackIncome : fallbackExpense;
+      const fb = LOAN_TYPES.has(type)
+        ? fallbackLoan
+        : type === "income"
+          ? fallbackIncome
+          : fallbackExpense;
       if (!fb) return errors.push({ row: idx + 1, error: "No category available to assign" });
       categoryId = fb.id;
     }
@@ -76,7 +99,7 @@ export async function POST(req: Request) {
       id: inserts[inserts.length - 1].id,
       userId: auth.userId,
       categoryId,
-      type: type as "expense" | "income" | "transfer",
+      type: type as TxTypeSql,
       amount: amountNum,
       currency: auth.user.currency ?? "USD",
       description,

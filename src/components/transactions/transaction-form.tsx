@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { useCategories } from "@/stores/categories";
-import { cn, currencySymbol } from "@/lib/utils";
+import { cn, currencySymbol, categoryTypeForTransactionType, isInflow, isOutflow, isLoanType } from "@/lib/utils";
 import type { TxType, PaymentMethod, RecurringFrequency, TransactionDTO } from "@/types";
 
 export interface TransactionFormValues {
@@ -40,6 +40,26 @@ const DEFAULT: TransactionFormValues = {
   tags: "",
 };
 
+type TypeButton = { type: TxType; label: string; subtitle: string };
+
+const TYPE_BUTTONS: TypeButton[] = [
+  { type: "expense", label: "Expense", subtitle: "Money out" },
+  { type: "income", label: "Income", subtitle: "Money in" },
+  { type: "loan_given", label: "Loan Given", subtitle: "You lent" },
+  { type: "loan_taken", label: "Loan Taken", subtitle: "You borrowed" },
+  { type: "repayment_received", label: "Repayment In", subtitle: "Paid back to you" },
+  { type: "repayment_made", label: "Repayment Out", subtitle: "You paid back" },
+];
+
+function typeButtonClasses(active: boolean, type: TxType): string {
+  if (!active) return "border-input bg-background/50 text-muted-foreground hover:bg-secondary";
+  if (type === "income" || type === "repayment_received") return "border-success bg-success/15 text-success";
+  if (type === "expense" || type === "repayment_made") return "border-destructive bg-destructive/15 text-destructive";
+  if (type === "loan_given") return "border-warning bg-warning/15 text-warning";
+  if (type === "loan_taken") return "border-primary bg-primary/15 text-primary";
+  return "border-primary bg-primary/15 text-primary";
+}
+
 export function TransactionForm({
   mode,
   initial,
@@ -67,17 +87,21 @@ export function TransactionForm({
     if (!loaded) fetchCats();
   }, [loaded, fetchCats]);
 
-  React.useEffect(() => {
-    // Default category selection when type switches
-    if (!values.categoryId && categories.length) {
-      const match = categories.find((c) => c.type === (values.type === "transfer" ? "expense" : values.type));
-      if (match) setValues((v) => ({ ...v, categoryId: match.id }));
-    }
-  }, [values.type, categories]);
-
-  const filteredCategories = categories.filter((c) =>
-    values.type === "income" ? c.type === "income" : c.type === "expense"
+  const requiredCategoryType = categoryTypeForTransactionType(values.type);
+  const filteredCategories = React.useMemo(
+    () => categories.filter((c) => c.type === requiredCategoryType),
+    [categories, requiredCategoryType]
   );
+
+  React.useEffect(() => {
+    // If the current category no longer matches the required type (or none picked), default-select one.
+    const current = categories.find((c) => c.id === values.categoryId);
+    if (!current || current.type !== requiredCategoryType) {
+      const first = filteredCategories[0];
+      if (first) setValues((v) => ({ ...v, categoryId: first.id }));
+      else if (values.categoryId) setValues((v) => ({ ...v, categoryId: "" }));
+    }
+  }, [values.type, requiredCategoryType, categories, filteredCategories, values.categoryId]);
 
   function set<K extends keyof TransactionFormValues>(k: K, v: TransactionFormValues[K]) {
     setValues((p) => ({ ...p, [k]: v }));
@@ -123,9 +147,12 @@ export function TransactionForm({
 
   const amountClass = cn(
     "text-2xl font-semibold h-14 pl-10",
-    values.type === "income" && "text-success",
-    values.type === "expense" && "text-destructive"
+    isInflow(values.type) && "text-success",
+    isOutflow(values.type) && "text-destructive"
   );
+
+  const categoryGroupLabel =
+    requiredCategoryType === "loan" ? "Loan" : requiredCategoryType === "income" ? "Income" : "Expense";
 
   return (
     <form
@@ -137,24 +164,19 @@ export function TransactionForm({
     >
       <div className="grid gap-1.5">
         <Label>Type</Label>
-        <div className="grid grid-cols-3 gap-2">
-          {(["expense", "income", "transfer"] as const).map((t) => (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {TYPE_BUTTONS.map(({ type, label, subtitle }) => (
             <button
               type="button"
-              key={t}
-              onClick={() => set("type", t)}
+              key={type}
+              onClick={() => set("type", type)}
               className={cn(
-                "h-10 rounded-md border text-sm font-medium capitalize transition-colors",
-                values.type === t
-                  ? t === "income"
-                    ? "border-success bg-success/15 text-success"
-                    : t === "expense"
-                      ? "border-destructive bg-destructive/15 text-destructive"
-                      : "border-primary bg-primary/15 text-primary"
-                  : "border-input bg-background/50 text-muted-foreground hover:bg-secondary"
+                "flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors",
+                typeButtonClasses(values.type === type, type)
               )}
             >
-              {t}
+              <span className="text-sm font-medium">{label}</span>
+              <span className="text-[11px] opacity-80">{subtitle}</span>
             </button>
           ))}
         </div>
@@ -187,11 +209,11 @@ export function TransactionForm({
           <Label>Category</Label>
           <Select value={values.categoryId} onValueChange={(v) => set("categoryId", v)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select category" />
+              <SelectValue placeholder={filteredCategories.length ? "Select category" : `No ${categoryGroupLabel.toLowerCase()} categories`} />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectLabel>{values.type === "income" ? "Income" : "Expense"}</SelectLabel>
+                <SelectLabel>{categoryGroupLabel}</SelectLabel>
                 {filteredCategories.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     <span className="mr-2">{c.icon}</span>
@@ -201,6 +223,11 @@ export function TransactionForm({
               </SelectGroup>
             </SelectContent>
           </Select>
+          {isLoanType(values.type) && filteredCategories.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Tip: create a Loan category on the Categories page first.
+            </p>
+          )}
           {errors.categoryId && <p className="text-xs text-destructive">{errors.categoryId[0]}</p>}
         </div>
         <div className="grid gap-1.5">
@@ -218,7 +245,17 @@ export function TransactionForm({
           maxLength={200}
           value={values.description}
           onChange={(e) => set("description", e.target.value)}
-          placeholder="Coffee at Blue Bottle"
+          placeholder={
+            values.type === "loan_given"
+              ? "Lent $100 to Alex"
+              : values.type === "loan_taken"
+                ? "Borrowed from Mom"
+                : values.type === "repayment_received"
+                  ? "Alex paid me back"
+                  : values.type === "repayment_made"
+                    ? "Paid back Mom"
+                    : "Coffee at Blue Bottle"
+          }
         />
         {errors.description && <p className="text-xs text-destructive">{errors.description[0]}</p>}
       </div>
@@ -242,7 +279,13 @@ export function TransactionForm({
 
       <div className="grid gap-1.5">
         <Label htmlFor="notes">Notes (optional)</Label>
-        <Textarea id="notes" rows={2} value={values.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any extra context" />
+        <Textarea
+          id="notes"
+          rows={2}
+          value={values.notes}
+          onChange={(e) => set("notes", e.target.value)}
+          placeholder={isLoanType(values.type) ? "Who & why — helpful for tracking" : "Any extra context"}
+        />
       </div>
 
       <div className="grid gap-1.5">

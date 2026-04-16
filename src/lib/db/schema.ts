@@ -25,7 +25,7 @@ export const categories = sqliteTable(
     name: text("name").notNull(),
     icon: text("icon").notNull().default("📦"),
     color: text("color").notNull().default("#6366F1"),
-    type: text("type", { enum: ["expense", "income"] }).notNull(),
+    type: text("type", { enum: ["expense", "income", "loan"] }).notNull(),
     budgetLimit: real("budget_limit"),
     isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),
@@ -47,7 +47,17 @@ export const transactions = sqliteTable(
     categoryId: text("category_id")
       .notNull()
       .references(() => categories.id, { onDelete: "restrict" }),
-    type: text("type", { enum: ["expense", "income", "transfer"] }).notNull(),
+    type: text("type", {
+      enum: [
+        "expense",
+        "income",
+        "transfer",
+        "loan_given",
+        "loan_taken",
+        "repayment_received",
+        "repayment_made",
+      ],
+    }).notNull(),
     amount: real("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
     description: text("description").notNull(),

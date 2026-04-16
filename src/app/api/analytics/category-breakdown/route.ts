@@ -10,7 +10,24 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
-  const type = url.searchParams.get("type") ?? "expense";
+  const rawType = url.searchParams.get("type") ?? "expense";
+  const allowedTypes = new Set([
+    "expense",
+    "income",
+    "transfer",
+    "loan_given",
+    "loan_taken",
+    "repayment_received",
+    "repayment_made",
+  ]);
+  const type = (allowedTypes.has(rawType) ? rawType : "expense") as
+    | "expense"
+    | "income"
+    | "transfer"
+    | "loan_given"
+    | "loan_taken"
+    | "repayment_received"
+    | "repayment_made";
   const fromDate = from ? new Date(from + "T00:00:00.000Z") : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const toDate = to ? new Date(to + "T23:59:59.999Z") : new Date();
 
@@ -28,7 +45,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(transactions.userId, auth.userId),
-        eq(transactions.type, type as "expense" | "income" | "transfer"),
+        eq(transactions.type, type),
         gte(transactions.date, fromDate),
         lte(transactions.date, toDate)
       )

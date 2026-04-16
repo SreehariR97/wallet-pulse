@@ -16,14 +16,14 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCategories } from "@/stores/categories";
-import type { CategoryDTO } from "@/types";
+import type { CategoryDTO, CategoryType } from "@/types";
 
-const COMMON_ICONS = ["📦", "🛒", "🏠", "🍽️", "🚗", "⚡", "🎬", "🏥", "🛍️", "📚", "📱", "✈️", "💇", "🎁", "🛡️", "💰", "💻", "📈", "🎓", "🐾", "☕", "🎵"];
+const COMMON_ICONS = ["📦", "🛒", "🏠", "🍽️", "🚗", "⚡", "🎬", "🏥", "🛍️", "📚", "📱", "✈️", "💇", "🎁", "🛡️", "💰", "💻", "📈", "🎓", "🐾", "☕", "🎵", "🤝", "🏦"];
 const SWATCHES = ["#6366F1", "#22C55E", "#EF4444", "#F97316", "#EC4899", "#EAB308", "#14B8A6", "#06B6D4", "#D946EF", "#0EA5E9", "#F43F5E", "#10B981", "#A855F7", "#FB923C"];
 
 export function CategoriesView() {
   const { items, loading, loaded, fetch: fetchCategories, upsert, remove } = useCategories();
-  const [tab, setTab] = React.useState<"expense" | "income">("expense");
+  const [tab, setTab] = React.useState<CategoryType>("expense");
   const [editing, setEditing] = React.useState<CategoryDTO | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<CategoryDTO | null>(null);
@@ -35,6 +35,7 @@ export function CategoriesView() {
 
   const expenseCount = items.filter((c) => c.type === "expense").length;
   const incomeCount = items.filter((c) => c.type === "income").length;
+  const loanCount = items.filter((c) => c.type === "loan").length;
 
   function openNew() {
     setEditing(null);
@@ -69,13 +70,14 @@ export function CategoriesView() {
         }
       />
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as CategoryType)}>
         <TabsList>
           <TabsTrigger value="expense">Expense ({expenseCount})</TabsTrigger>
           <TabsTrigger value="income">Income ({incomeCount})</TabsTrigger>
+          <TabsTrigger value="loan">Loans ({loanCount})</TabsTrigger>
         </TabsList>
 
-        {(["expense", "income"] as const).map((type) => (
+        {(["expense", "income", "loan"] as const).map((type) => (
           <TabsContent key={type} value={type} className="mt-4">
             {loading ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -180,7 +182,7 @@ function CategoryDialog({
   const [name, setName] = React.useState("");
   const [icon, setIcon] = React.useState("📦");
   const [color, setColor] = React.useState("#6366F1");
-  const [type, setType] = React.useState<"expense" | "income">("expense");
+  const [type, setType] = React.useState<CategoryType>("expense");
   const [budgetLimit, setBudgetLimit] = React.useState<string>("");
   const [pending, setPending] = React.useState(false);
 
@@ -232,13 +234,14 @@ function CategoryDialog({
           </div>
           <div className="grid gap-1.5">
             <Label>Type</Label>
-            <Select value={type} onValueChange={(v) => setType(v as any)}>
+            <Select value={type} onValueChange={(v) => setType(v as CategoryType)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="expense">Expense</SelectItem>
                 <SelectItem value="income">Income</SelectItem>
+                <SelectItem value="loan">Loan</SelectItem>
               </SelectContent>
             </Select>
           </div>

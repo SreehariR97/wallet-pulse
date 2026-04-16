@@ -7,7 +7,7 @@ export const categoryCreateSchema = z.object({
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/, "Must be a hex color like #FF6B6B")
     .default("#6366F1"),
-  type: z.enum(["expense", "income"]),
+  type: z.enum(["expense", "income", "loan"]),
   budgetLimit: z.coerce.number().positive().optional().nullable(),
 });
 

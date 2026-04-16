@@ -1,4 +1,12 @@
-export type TxType = "expense" | "income" | "transfer";
+export type TxType =
+  | "expense"
+  | "income"
+  | "transfer"
+  | "loan_given"
+  | "loan_taken"
+  | "repayment_received"
+  | "repayment_made";
+export type CategoryType = "expense" | "income" | "loan";
 export type PaymentMethod = "cash" | "credit_card" | "debit_card" | "bank_transfer" | "upi" | "other";
 export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -8,7 +16,7 @@ export interface CategoryDTO {
   name: string;
   icon: string;
   color: string;
-  type: "expense" | "income";
+  type: CategoryType;
   budgetLimit: number | null;
   isDefault: boolean;
   sortOrder: number;

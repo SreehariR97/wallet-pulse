@@ -300,7 +300,7 @@ function BudgetDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   initial: BudgetRow | null;
-  categories: Array<{ id: string; name: string; icon: string; type: "expense" | "income" }>;
+  categories: Array<{ id: string; name: string; icon: string; type: "expense" | "income" | "loan" }>;
   onSaved: () => void;
 }) {
   const [categoryId, setCategoryId] = React.useState<string>(OVERALL_VALUE);

@@ -96,14 +96,17 @@ export function TransactionFilters({
       </Select>
 
       <Select value={values.type ?? ALL} onValueChange={(v) => onChange({ ...values, type: toFilterParam(v) as TxType | undefined })}>
-        <SelectTrigger className="w-[130px]">
+        <SelectTrigger className="w-[170px]">
           <SelectValue placeholder="Type" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All types</SelectItem>
           <SelectItem value="expense">Expense</SelectItem>
           <SelectItem value="income">Income</SelectItem>
-          <SelectItem value="transfer">Transfer</SelectItem>
+          <SelectItem value="loan_given">Loan Given</SelectItem>
+          <SelectItem value="loan_taken">Loan Taken</SelectItem>
+          <SelectItem value="repayment_received">Repayment In</SelectItem>
+          <SelectItem value="repayment_made">Repayment Out</SelectItem>
         </SelectContent>
       </Select>
 
