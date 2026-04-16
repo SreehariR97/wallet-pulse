@@ -18,7 +18,16 @@
       "Bash(pnpm db:migrate)",
       "Bash(pnpm type-check:*)",
       "Bash(pnpm build:*)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(gh auth:*)",
+      "Bash(ssh -T git@github.com)",
+      "Bash(git config:*)",
+      "Read(//Users/sreeharirevuri/**)",
+      "Bash(defaults read:*)",
+      "Bash(lsof -nP -iTCP -sTCP:LISTEN)",
+      "Bash(lsof -nP -p 8709 -iTCP -sTCP:LISTEN)",
+      "Bash(security find-internet-password:*)",
+      "Bash(security find-generic-password:*)"
     ]
   }
 }
