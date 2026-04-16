@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version)",
+      "Bash(npm --version)",
+      "Bash(command -v nvm)",
+      "Read(//Users/sreeharirevuri/.nvm/versions/**)",
+      "Bash(/opt/homebrew/bin/brew --version)",
+      "Bash(/opt/homebrew/bin/brew install:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm rebuild:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(npm_config_build_from_source=false pnpm exec node-gyp-build)",
+      "Bash(pnpm exec:*)",
+      "Bash(npx prebuild-install:*)",
+      "Bash(npx node-gyp:*)",
+      "Bash(pnpm db:generate)",
+      "Bash(pnpm db:migrate)",
+      "Bash(pnpm type-check:*)",
+      "Bash(pnpm build:*)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
