@@ -33,7 +33,14 @@
       "Bash(kill 3860)",
       "Bash(docker --version)",
       "Bash(docker info:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__computer",
+      "mcp__Claude_in_Chrome__find",
+      "mcp__Claude_in_Chrome__form_input",
+      "mcp__Claude_in_Chrome__read_network_requests",
+      "mcp__Claude_in_Chrome__javascript_tool"
     ]
   }
 }
