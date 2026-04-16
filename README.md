@@ -1,15 +1,15 @@
 # WalletPulse
 
-**A privacy-first, self-hosted personal finance tracker. Your money, beautifully tracked — on your own machine.**
+**A privacy-first personal finance tracker. Your money, beautifully tracked.**
 
-WalletPulse is a production-grade, Mint / YNAB-style expense tracker that runs entirely on your hardware. No third-party aggregators, no bank linking, no analytics pixels — every transaction, category, and budget lives in a single SQLite file you control.
+WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on modern serverless primitives. No third-party aggregators, no bank linking, no analytics pixels — every transaction, category, and budget lives in your own Postgres database, ready to deploy to Vercel in minutes or self-host on any Node runtime.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-14-black?logo=next.js" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white" />
   <img alt="Tailwind CSS" src="https://img.shields.io/badge/Tailwind-3.4-38BDF8?logo=tailwindcss&logoColor=white" />
   <img alt="Drizzle ORM" src="https://img.shields.io/badge/Drizzle-ORM-C5F74F?logo=drizzle&logoColor=black" />
-  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white" />
+  <img alt="Postgres" src="https://img.shields.io/badge/Postgres-16-336791?logo=postgresql&logoColor=white" />
   <img alt="NextAuth" src="https://img.shields.io/badge/Auth.js-v5-A855F7" />
   <img alt="License" src="https://img.shields.io/badge/License-MIT-green" />
 </p>
@@ -49,7 +49,7 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker that runs e
 | Styling | **Tailwind CSS** + custom HSL theme tokens (dark + light) |
 | UI primitives | **shadcn/ui** on top of **Radix UI** |
 | Charts | **Recharts** |
-| Database | **SQLite** via **better-sqlite3** |
+| Database | **Postgres** via **Neon serverless driver** (`@neondatabase/serverless`) |
 | ORM & migrations | **Drizzle ORM** + **drizzle-kit** |
 | Authentication | **NextAuth v5** (Auth.js) — credentials provider, JWT strategy |
 | Forms & validation | **react-hook-form** + **Zod** |
@@ -64,8 +64,8 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker that runs e
 
 ### Prerequisites
 
-- **Node.js** ≥ 18.17 (LTS recommended)
-- **pnpm** ≥ 9 — install via `npm install -g pnpm` or `corepack enable`
+- **Node.js 22.x** (pinned via `engines` — Vercel uses this exact runtime, local dev should too)
+- **pnpm 9.12.x** (pinned via `packageManager` — run `corepack enable` and it'll pick the right one automatically)
 
 ### 1. Clone and install
 
@@ -75,38 +75,44 @@ cd wallet-pulse
 pnpm install
 ```
 
-### 2. Configure environment
+### 2. Provision a Postgres database
 
-Copy the example file and generate a secret:
+Any Postgres works — **Neon** is recommended for its generous free tier and first-class serverless driver:
+
+1. Create a project at [console.neon.tech](https://console.neon.tech).
+2. Copy the **pooled** connection string (contains `-pooler` in the host).
+
+Supabase, Railway Postgres, Vercel Postgres, AWS RDS, and local Postgres all work too.
+
+### 3. Configure environment
 
 ```bash
 cp .env.example .env.local
 ```
 
-Then open `.env.local` and replace `your-secret-here` in both `NEXTAUTH_SECRET` and `AUTH_SECRET` with a random string. A good one-liner:
+Generate a secret and paste your DB URL into `.env.local`:
 
 ```bash
-openssl rand -base64 32
+openssl rand -base64 32   # use the same value for both SECRETs below
 ```
-
-Minimal `.env.local`:
 
 ```env
 NEXTAUTH_SECRET=<your-generated-secret>
-NEXTAUTH_URL=http://localhost:3000
 AUTH_SECRET=<your-generated-secret>
+NEXTAUTH_URL=http://localhost:3000
 AUTH_TRUST_HOST=true
-DATABASE_URL=file:./data/walletpulse.db
+DATABASE_URL=postgres://user:pass@ep-xxxxx-pooler.us-east-2.aws.neon.tech/walletpulse?sslmode=require
 ```
 
-### 3. Initialize the database
+### 4. Initialize the database
 
 ```bash
-pnpm db:migrate   # applies Drizzle migrations
-pnpm db:seed      # seeds the demo user + default categories
+pnpm db:migrate   # applies Drizzle migrations to Postgres
 ```
 
-### 4. Run the app
+On first visit, a new user gets the default categories seeded automatically.
+
+### 5. Run the app
 
 ```bash
 pnpm dev
@@ -135,9 +141,11 @@ The demo user ships with a handful of transactions and two budgets (Groceries $4
 | `pnpm lint` | Run ESLint |
 | `pnpm type-check` | `tsc --noEmit` across the whole codebase |
 | `pnpm db:generate` | Generate a new Drizzle migration from schema changes |
-| `pnpm db:migrate` | Apply pending migrations to the SQLite file |
+| `pnpm db:migrate` | Apply pending migrations to your Postgres database |
+| `pnpm db:push` | Push the schema directly without generating a migration (dev-only) |
 | `pnpm db:studio` | Open Drizzle Studio on port 4983 to browse the DB |
 | `pnpm db:seed` | Seed default categories + demo user |
+| `pnpm db:migrate-from-sqlite` | One-shot: copy an existing `data/walletpulse.db` into the configured Postgres DB |
 
 ---
 
@@ -186,12 +194,12 @@ src/
 
 ### Edge-safe auth split
 
-`middleware.ts` runs in the Edge Runtime, which cannot load native modules like `better-sqlite3`. WalletPulse solves this with a two-file auth setup:
+`middleware.ts` runs in the Edge Runtime, which has a reduced Node API surface. WalletPulse uses the two-file auth pattern recommended by Auth.js maintainers:
 
 - **`src/lib/auth.config.ts`** — pure config (providers list, callbacks, pages). Zero DB imports. Safe to import from middleware.
-- **`src/lib/auth.ts`** — spreads `authConfig` and adds the Credentials provider, which calls into Drizzle/SQLite to verify the user. Used by API routes and Server Components.
+- **`src/lib/auth.ts`** — spreads `authConfig` and adds the Credentials provider, which calls into Drizzle/Postgres to verify the user. Used by API routes and Server Components.
 
-This mirrors the pattern recommended by the Auth.js maintainers and keeps middleware fast, deterministic, and Edge-compatible.
+This keeps middleware fast and deterministic while letting the credential flow do real database work.
 
 ### Server Components by default
 
@@ -263,21 +271,60 @@ users
  └─< budgets           (overall or per-category, period = weekly | monthly | yearly)
 ```
 
-Timestamps are stored as Unix seconds (compact, index-friendly, timezone-agnostic). Amounts are `REAL`. The schema lives in `src/lib/db/schema.ts`.
+Timestamps use `timestamp with time zone` (indexable, timezone-aware). Amounts are `double precision`. The schema lives in `src/lib/db/schema.ts`.
 
 ---
 
 ## Deployment
 
-WalletPulse is designed to be self-hosted on any box that can run a Node process and hold a writable SQLite file.
+### Deploy to Vercel (recommended)
 
-1. Provision a VM or container with Node 18+.
-2. Copy the project, run `pnpm install --prod` and `pnpm build`.
-3. Set the same env vars as local (`AUTH_SECRET`, `NEXTAUTH_URL`, `DATABASE_URL`).
-4. Run `pnpm db:migrate`, then `pnpm start` behind a reverse proxy (nginx, Caddy, Cloudflare Tunnel, etc.).
-5. Back up `data/walletpulse.db` on whatever cadence you like — it's just a single file.
+WalletPulse is built for Vercel's serverless runtime. End-to-end in ~5 minutes:
 
-Because middleware is Edge-safe and the rest of the app runs on the Node runtime, you can also deploy to Vercel, Railway, Fly, or any Node-capable PaaS; the only caveat is that the SQLite file must live on persistent storage.
+1. **Provision Postgres** — create a project at [Neon](https://console.neon.tech) and copy the pooled connection string.
+2. **Push to GitHub**, then click "New Project" on [vercel.com](https://vercel.com/new) and import the repo.
+3. **Set environment variables** in the Vercel dashboard (Settings → Environment Variables):
+
+   | Variable | Value |
+   | --- | --- |
+   | `DATABASE_URL` | Your Neon pooled connection string |
+   | `AUTH_SECRET` | Output of `openssl rand -base64 32` |
+   | `NEXTAUTH_SECRET` | Same value as `AUTH_SECRET` |
+   | `NEXTAUTH_URL` | Your production URL (e.g. `https://wallet-pulse.vercel.app`) |
+   | `AUTH_TRUST_HOST` | `true` |
+
+4. **Apply the schema once** — from your local machine with the production `DATABASE_URL` exported:
+
+   ```bash
+   DATABASE_URL="postgres://..." pnpm db:migrate
+   ```
+
+5. **Deploy**. Vercel auto-builds on every push to `main`.
+
+#### Why not file-based SQLite on Vercel?
+
+Vercel runs each request in a serverless function with a read-only filesystem (except for ephemeral `/tmp`), and native modules like `better-sqlite3` can't be prebuilt for its exact Node ABI. That's why WalletPulse ships with Postgres: `@neondatabase/serverless` uses HTTP instead of a TCP socket, so every request gets a fresh connection in ~20ms without any pool exhaustion.
+
+### Alternative: self-host on a VPS
+
+If you'd rather run it yourself on a Railway / Fly / VPS:
+
+1. Provision Postgres (managed or container) and Node 18+.
+2. `pnpm install`, `pnpm build`.
+3. Set the same env vars as above.
+4. `pnpm db:migrate`, then `pnpm start` behind nginx / Caddy / Cloudflare Tunnel.
+
+### Migrating existing SQLite data
+
+If you were running an earlier SQLite version and want to preserve your transactions, the repo ships with a one-shot helper. `better-sqlite3` is an **optional** dependency (so Vercel builds never try to compile it) — install it locally just for this migration:
+
+```bash
+pnpm add -D better-sqlite3
+SQLITE_PATH=./data/walletpulse.db DATABASE_URL="postgres://..." pnpm db:migrate-from-sqlite
+pnpm remove better-sqlite3   # optional cleanup once you're done
+```
+
+The script is idempotent — re-runs skip rows that are already present.
 
 ---
 

@@ -14,8 +14,10 @@ export async function GET(req: Request) {
   const fromDate = from ? new Date(from + "T00:00:00.000Z") : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const toDate = to ? new Date(to + "T23:59:59.999Z") : new Date();
 
-  const fmt = granularity === "monthly" ? "%Y-%m" : "%Y-%m-%d";
-  const bucket = sql<string>`strftime(${fmt}, ${transactions.date}, 'unixepoch')`;
+  // Postgres uses to_char() for formatted date output, with different tokens
+  // than SQLite's strftime: YYYY-MM-DD / YYYY-MM.
+  const fmt = granularity === "monthly" ? "YYYY-MM" : "YYYY-MM-DD";
+  const bucket = sql<string>`to_char(${transactions.date}, ${fmt})`;
 
   const rows = await db
     .select({

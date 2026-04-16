@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { categories, transactions } from "@/lib/db/schema";
-import { ok, fail, requireUser } from "@/lib/api";
+import { fail, requireUser } from "@/lib/api";
 
 type ImportRow = {
   date?: string;
@@ -36,6 +36,13 @@ type TxTypeSql =
   | "loan_taken"
   | "repayment_received"
   | "repayment_made";
+type PaymentMethodSql =
+  | "cash"
+  | "credit_card"
+  | "debit_card"
+  | "bank_transfer"
+  | "upi"
+  | "other";
 
 export async function POST(req: Request) {
   const auth = await requireUser();
@@ -49,23 +56,40 @@ export async function POST(req: Request) {
 
   const userCats = await db.select().from(categories).where(eq(categories.userId, auth.userId));
   const catByName = new Map(userCats.map((c) => [c.name.toLowerCase(), c]));
-  const fallbackExpense = userCats.find((c) => c.type === "expense" && c.name === "Miscellaneous") ?? userCats.find((c) => c.type === "expense");
+  const fallbackExpense =
+    userCats.find((c) => c.type === "expense" && c.name === "Miscellaneous") ??
+    userCats.find((c) => c.type === "expense");
   const fallbackIncome = userCats.find((c) => c.type === "income");
   const fallbackLoan = userCats.find((c) => c.type === "loan");
 
-  const inserts: { id: string; date: Date; amount: number; description: string }[] = [];
+  // Two-pass: first validate every row and build the insert payload, then
+  // commit the batch. That way we never leave a partial import behind even
+  // if one row is malformed.
+  const inserts: Array<typeof transactions.$inferInsert> = [];
   const errors: { row: number; error: string }[] = [];
 
   rows.forEach((r, idx) => {
     const type = (r.type ?? "expense").toLowerCase();
-    if (!TYPES.has(type)) return errors.push({ row: idx + 1, error: `Invalid type "${r.type}"` });
+    if (!TYPES.has(type)) {
+      errors.push({ row: idx + 1, error: `Invalid type "${r.type}"` });
+      return;
+    }
 
     const amountNum = Number(r.amount);
-    if (!Number.isFinite(amountNum) || amountNum <= 0) return errors.push({ row: idx + 1, error: `Invalid amount "${r.amount}"` });
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      errors.push({ row: idx + 1, error: `Invalid amount "${r.amount}"` });
+      return;
+    }
 
-    if (!r.date) return errors.push({ row: idx + 1, error: "Missing date" });
+    if (!r.date) {
+      errors.push({ row: idx + 1, error: "Missing date" });
+      return;
+    }
     const parsedDate = new Date(String(r.date));
-    if (isNaN(parsedDate.getTime())) return errors.push({ row: idx + 1, error: `Invalid date "${r.date}"` });
+    if (isNaN(parsedDate.getTime())) {
+      errors.push({ row: idx + 1, error: `Invalid date "${r.date}"` });
+      return;
+    }
 
     const description = (r.description ?? "").trim() || "Imported transaction";
 
@@ -80,23 +104,19 @@ export async function POST(req: Request) {
         : type === "income"
           ? fallbackIncome
           : fallbackExpense;
-      if (!fb) return errors.push({ row: idx + 1, error: "No category available to assign" });
+      if (!fb) {
+        errors.push({ row: idx + 1, error: "No category available to assign" });
+        return;
+      }
       categoryId = fb.id;
     }
 
     const paymentMethod = r.paymentMethod && PAYMENT_METHODS.has(r.paymentMethod)
-      ? (r.paymentMethod as string)
-      : "other";
+      ? (r.paymentMethod as PaymentMethodSql)
+      : ("other" as PaymentMethodSql);
 
     inserts.push({
       id: randomUUID(),
-      date: parsedDate,
-      amount: amountNum,
-      description,
-    });
-
-    db.insert(transactions).values({
-      id: inserts[inserts.length - 1].id,
       userId: auth.userId,
       categoryId,
       type: type as TxTypeSql,
@@ -105,11 +125,16 @@ export async function POST(req: Request) {
       description,
       notes: r.notes || null,
       date: parsedDate,
-      paymentMethod: paymentMethod as "cash" | "credit_card" | "debit_card" | "bank_transfer" | "upi" | "other",
+      paymentMethod,
       isRecurring: false,
       tags: r.tags || null,
-    }).run();
+    });
   });
+
+  if (inserts.length > 0) {
+    // Postgres handles multi-row inserts natively; one round-trip for the batch.
+    await db.insert(transactions).values(inserts);
+  }
 
   return NextResponse.json(
     { data: { imported: inserts.length, skipped: errors.length, errors: errors.slice(0, 50) } },

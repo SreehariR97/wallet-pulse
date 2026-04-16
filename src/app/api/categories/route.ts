@@ -30,7 +30,7 @@ async function backfillDefaults(userId: string, existing: Category[]) {
     isDefault: true,
     sortOrder: existing.length + i,
   }));
-  await db.insert(categories).values(rows).run();
+  await db.insert(categories).values(rows);
   return rows;
 }
 
@@ -81,8 +81,7 @@ export async function POST(req: Request) {
       color: parsed.data.color,
       type: parsed.data.type,
       budgetLimit: parsed.data.budgetLimit ?? null,
-    })
-    .run();
+    });
 
   const [row] = await db.select().from(categories).where(eq(categories.id, id)).limit(1);
   return NextResponse.json({ data: row }, { status: 201 });

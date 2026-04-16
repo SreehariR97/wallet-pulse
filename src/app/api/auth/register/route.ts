@@ -19,8 +19,8 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
   const id = randomUUID();
-  await db.insert(users).values({ id, name: parsed.data.name, email, passwordHash }).run();
-  seedDefaultCategoriesForUser(id);
+  await db.insert(users).values({ id, name: parsed.data.name, email, passwordHash });
+  await seedDefaultCategoriesForUser(id);
 
   return NextResponse.json({ data: { id, email } }, { status: 201 });
 }

@@ -28,7 +28,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (b.startDate !== undefined) patch.startDate = new Date(b.startDate + "T00:00:00.000Z");
   if (b.endDate !== undefined) patch.endDate = b.endDate ? new Date(b.endDate + "T23:59:59.999Z") : null;
 
-  await db.update(budgets).set(patch).where(eq(budgets.id, params.id)).run();
+  await db.update(budgets).set(patch).where(eq(budgets.id, params.id));
   const [row] = await db.select().from(budgets).where(eq(budgets.id, params.id)).limit(1);
   return ok(row);
 }
@@ -38,6 +38,6 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if ("error" in auth) return auth.error;
   const existing = await assertOwned(params.id, auth.userId);
   if (!existing) return fail(404, "Budget not found");
-  await db.delete(budgets).where(eq(budgets.id, params.id)).run();
+  await db.delete(budgets).where(eq(budgets.id, params.id));
   return ok({ id: params.id });
 }

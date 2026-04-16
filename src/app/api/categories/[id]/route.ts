@@ -23,8 +23,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   await db
     .update(categories)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(categories.id, params.id))
-    .run();
+    .where(eq(categories.id, params.id));
 
   const [row] = await db.select().from(categories).where(eq(categories.id, params.id)).limit(1);
   return ok(row);
@@ -46,6 +45,6 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     return fail(409, `This category has ${count} transactions. Reassign them first.`, { transactionCount: Number(count) });
   }
 
-  await db.delete(categories).where(eq(categories.id, params.id)).run();
+  await db.delete(categories).where(eq(categories.id, params.id));
   return ok({ id: params.id });
 }

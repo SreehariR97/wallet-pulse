@@ -1,16 +1,19 @@
 # WalletPulse
 
-Privacy-first, self-hosted personal expense tracker. Production-grade Mint/YNAB-style app.
+Privacy-first personal expense tracker. Production-grade Mint/YNAB-style app. Deployable to Vercel with Neon Postgres, or self-host anywhere Node runs.
 
 ## Tech stack
 
 - **Next.js 14** (App Router) + TypeScript
 - **Tailwind CSS** + shadcn/ui (customized dark slate + indigo/cyan palette, Plus Jakarta Sans)
-- **Drizzle ORM** + SQLite (`better-sqlite3`, file at `data/walletpulse.db`)
+- **Drizzle ORM** + **Postgres** via `@neondatabase/serverless` (HTTP driver — no connection pool issues on Lambda)
+  - `better-sqlite3` is an **optionalDependency** — Vercel can skip it silently when no prebuilt binary exists for the runtime's Node ABI. `scripts/sqlite-to-postgres.ts` uses a dynamic import and prints a friendly install hint if it's missing.
+  - `pg` is used by `src/lib/db/migrate.ts` since the migrator needs transactional DDL.
+- **Node 22.x** pinned in `engines` — Vercel uses this exact runtime, which has prebuilt binaries for every native dep we might optionally install.
 - **NextAuth v5** (credentials provider, JWT strategy, split edge-safe config)
 - **Zustand** for client state (categories store)
 - **Recharts** for charts · **date-fns** · **Zod** · **sonner** · **papaparse**
-- Package manager: **pnpm**
+- Package manager: **pnpm@9.12.0** (pinned via `packageManager` field)
 
 ## Scripts
 
@@ -81,13 +84,20 @@ src/
 
 ### Critical: auth split
 
-Middleware imports ONLY `auth.config.ts` (no DB), because `better-sqlite3` breaks Edge Runtime. The Credentials provider lives in `auth.ts` which imports `db`. Keep this split.
+Middleware imports ONLY `auth.config.ts` (no DB). The Credentials provider lives in `auth.ts` which imports `db`. This is the standard Auth.js v5 pattern — keep the split.
+
+### Critical: Postgres driver choices
+
+- **Runtime queries** use `@neondatabase/serverless` + `drizzle-orm/neon-http` (`src/lib/db/index.ts`). HTTP-based, no connection pooling needed, works on Vercel Edge + Node runtimes.
+- **Migrations** use `pg` + `drizzle-orm/node-postgres/migrator` (`src/lib/db/migrate.ts`). The HTTP driver can't run transactional DDL.
+- **SQL**: all API queries are dialect-neutral. The only Postgres-specific SQL is `to_char(date, 'YYYY-MM-DD')` in `src/app/api/analytics/trends/route.ts`.
+- **Search**: use `ilike()` (not `like()`) for case-insensitive search — Postgres `LIKE` is case-sensitive.
 
 ## Database schema
 
-Tables: `users`, `categories` (per-user), `transactions`, `budgets`. Timestamps stored as unix seconds. See `src/lib/db/schema.ts`.
+Tables: `users`, `categories` (per-user), `transactions`, `budgets`. Timestamps stored as `timestamp with time zone`. Amounts as `double precision`. See `src/lib/db/schema.ts`.
 
-18 default categories seeded on registration via `seedDefaultCategoriesForUser(userId)`.
+20 default categories seeded on registration via `seedDefaultCategoriesForUser(userId)` (18 expense/income + 2 loan). `seedDefaultCategoriesForUser` is now `async`, so it must be `await`ed.
 
 ## API conventions
 
@@ -118,6 +128,10 @@ Tables: `users`, `categories` (per-user), `transactions`, `budgets`. Timestamps 
 - `pnpm type-check` passes, `pnpm build` succeeds
 - Known harmless warning: "Serializing big strings" from webpack cache on dev build
 
+## Vercel deployment
+
+Env vars required: `DATABASE_URL` (Neon pooled connection), `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `AUTH_TRUST_HOST=true`. Apply schema once with `DATABASE_URL=... pnpm db:migrate` before first deploy. No build-time DB access required — routes are serverless functions that open an HTTP connection per request.
+
 ## What to do next session
 
-Pick from: additional polish (error boundaries per section, mobile tuning at 375px), multi-currency conversion, transaction receipts upload, recurring-transaction materialization (auto-create future instances), PWA manifest, E2E tests (Playwright), Postgres migration path.
+Pick from: additional polish (error boundaries per section, mobile tuning at 375px), multi-currency conversion, transaction receipts upload, recurring-transaction materialization (auto-create future instances), PWA manifest, E2E tests (Playwright).

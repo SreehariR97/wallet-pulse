@@ -146,8 +146,7 @@ async function main() {
       paymentMethod: "other",
       isRecurring: false,
       tags: null,
-    })
-    .run();
+    });
 
   let ok = 0;
   let failed = 0;
@@ -174,8 +173,7 @@ async function main() {
         isRecurring: r.isRecurring ?? false,
         recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
         tags: r.tags ?? null,
-      })
-      .run();
+      });
     ok++;
   }
 

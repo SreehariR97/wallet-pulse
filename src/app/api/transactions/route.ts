@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { and, asc, desc, eq, gte, lte, like, sql, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, ilike, sql, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { transactions, categories } from "@/lib/db/schema";
 import { transactionCreateSchema, transactionQuerySchema } from "@/lib/validations/transaction";
@@ -25,9 +25,9 @@ export async function GET(req: Request) {
   if (q.maxAmount !== undefined) filters.push(lte(transactions.amount, q.maxAmount));
   if (q.search) {
     const s = `%${q.search}%`;
-    filters.push(or(like(transactions.description, s), like(transactions.notes, s)) as any);
+    filters.push(or(ilike(transactions.description, s), ilike(transactions.notes, s)) as any);
   }
-  if (q.tags) filters.push(like(transactions.tags, `%${q.tags}%`));
+  if (q.tags) filters.push(ilike(transactions.tags, `%${q.tags}%`));
 
   const sortCol =
     q.sort === "amount"
@@ -106,8 +106,7 @@ export async function POST(req: Request) {
       isRecurring: t.isRecurring,
       recurringFrequency: t.isRecurring ? t.recurringFrequency ?? null : null,
       tags: t.tags ?? null,
-    })
-    .run();
+    });
 
   const [row] = await db.select().from(transactions).where(eq(transactions.id, id)).limit(1);
   return NextResponse.json({ data: row }, { status: 201 });

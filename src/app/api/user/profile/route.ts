@@ -41,7 +41,7 @@ export async function PUT(req: Request) {
   if (p.currency !== undefined) patch.currency = p.currency.toUpperCase();
   if (p.monthlyBudget !== undefined) patch.monthlyBudget = p.monthlyBudget;
 
-  await db.update(users).set(patch).where(eq(users.id, auth.userId)).run();
+  await db.update(users).set(patch).where(eq(users.id, auth.userId));
   const [row] = await db
     .select({ id: users.id, name: users.name, email: users.email, currency: users.currency, monthlyBudget: users.monthlyBudget })
     .from(users)
@@ -53,6 +53,6 @@ export async function PUT(req: Request) {
 export async function DELETE() {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
-  await db.delete(users).where(eq(users.id, auth.userId)).run();
+  await db.delete(users).where(eq(users.id, auth.userId));
   return ok({ id: auth.userId });
 }

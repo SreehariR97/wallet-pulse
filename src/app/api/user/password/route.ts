@@ -20,6 +20,6 @@ export async function PUT(req: Request) {
   if (!valid) return fail(400, "Current password is incorrect");
 
   const hash = await bcrypt.hash(parsed.data.newPassword, 10);
-  await db.update(users).set({ passwordHash: hash, updatedAt: new Date() }).where(eq(users.id, auth.userId)).run();
+  await db.update(users).set({ passwordHash: hash, updatedAt: new Date() }).where(eq(users.id, auth.userId));
   return ok({ updated: true });
 }

@@ -3,7 +3,7 @@ import { db } from "./index";
 import { categories } from "./schema";
 import { DEFAULT_CATEGORIES } from "./defaults";
 
-export function seedDefaultCategoriesForUser(userId: string) {
+export async function seedDefaultCategoriesForUser(userId: string) {
   const rows = DEFAULT_CATEGORIES.map((c, i) => ({
     id: randomUUID(),
     userId,
@@ -14,7 +14,7 @@ export function seedDefaultCategoriesForUser(userId: string) {
     isDefault: true,
     sortOrder: i,
   }));
-  db.insert(categories).values(rows).run();
+  await db.insert(categories).values(rows);
 }
 
 if (require.main === module) {

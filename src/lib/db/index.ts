@@ -1,17 +1,18 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { mkdirSync } from "fs";
-import path from "path";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
-const dbUrl = process.env.DATABASE_URL ?? "file:./data/walletpulse.db";
-const dbPath = dbUrl.replace(/^file:/, "");
-const dir = path.dirname(path.resolve(dbPath));
-mkdirSync(dir, { recursive: true });
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error(
+    "DATABASE_URL is not set. Copy .env.example to .env.local and set it to your Neon/Postgres connection string."
+  );
+}
 
-const sqlite = new Database(dbPath);
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
+// neon() returns an HTTP-based SQL client that's serverless-friendly.
+// It opens a new short-lived connection per query — no pool exhaustion on
+// cold starts, works great on Vercel edge/serverless functions.
+const sql = neon(connectionString);
 
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(sql, { schema });
 export { schema };

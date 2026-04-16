@@ -50,7 +50,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (t.recurringFrequency !== undefined) patch.recurringFrequency = t.recurringFrequency;
   if (t.tags !== undefined) patch.tags = t.tags;
 
-  await db.update(transactions).set(patch).where(eq(transactions.id, params.id)).run();
+  await db.update(transactions).set(patch).where(eq(transactions.id, params.id));
   const [row] = await db.select().from(transactions).where(eq(transactions.id, params.id)).limit(1);
   return ok(row);
 }
@@ -60,6 +60,6 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if ("error" in auth) return auth.error;
   const existing = await assertOwned(params.id, auth.userId);
   if (!existing) return fail(404, "Transaction not found");
-  await db.delete(transactions).where(eq(transactions.id, params.id)).run();
+  await db.delete(transactions).where(eq(transactions.id, params.id));
   return ok({ id: params.id });
 }

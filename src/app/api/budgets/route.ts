@@ -101,8 +101,7 @@ export async function POST(req: Request) {
       period: parsed.data.period,
       startDate: new Date(parsed.data.startDate + "T00:00:00.000Z"),
       endDate: parsed.data.endDate ? new Date(parsed.data.endDate + "T23:59:59.999Z") : null,
-    })
-    .run();
+    });
 
   const [row] = await db.select().from(budgets).where(eq(budgets.id, id)).limit(1);
   return NextResponse.json({ data: row }, { status: 201 });

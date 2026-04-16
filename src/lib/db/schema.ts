@@ -1,21 +1,28 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import {
+  pgTable,
+  text,
+  boolean,
+  doublePrecision,
+  timestamp,
+  index,
+} from "drizzle-orm/pg-core";
 
-const now = sql`(strftime('%s', 'now'))`;
+const now = sql`now()`;
 
-export const users = sqliteTable("users", {
+export const users = pgTable("users", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   currency: text("currency").notNull().default("USD"),
-  monthlyBudget: real("monthly_budget"),
+  monthlyBudget: doublePrecision("monthly_budget"),
   theme: text("theme").notNull().default("dark"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(now),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(now),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
 });
 
-export const categories = sqliteTable(
+export const categories = pgTable(
   "categories",
   {
     id: text("id").primaryKey(),
@@ -25,19 +32,21 @@ export const categories = sqliteTable(
     name: text("name").notNull(),
     icon: text("icon").notNull().default("📦"),
     color: text("color").notNull().default("#6366F1"),
-    type: text("type", { enum: ["expense", "income", "loan"] }).notNull(),
-    budgetLimit: real("budget_limit"),
-    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
-    sortOrder: integer("sort_order").notNull().default(0),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(now),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(now),
+    // Enum values are validated in the Zod layer; keeping this as plain text
+    // avoids a PG native enum type and keeps migrations trivially additive.
+    type: text("type").$type<"expense" | "income" | "loan">().notNull(),
+    budgetLimit: doublePrecision("budget_limit"),
+    isDefault: boolean("is_default").notNull().default(false),
+    sortOrder: doublePrecision("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
   },
   (t) => ({
     userIdx: index("categories_user_idx").on(t.userId),
   })
 );
 
-export const transactions = sqliteTable(
+export const transactions = pgTable(
   "transactions",
   {
     id: text("id").primaryKey(),
@@ -47,33 +56,34 @@ export const transactions = sqliteTable(
     categoryId: text("category_id")
       .notNull()
       .references(() => categories.id, { onDelete: "restrict" }),
-    type: text("type", {
-      enum: [
-        "expense",
-        "income",
-        "transfer",
-        "loan_given",
-        "loan_taken",
-        "repayment_received",
-        "repayment_made",
-      ],
-    }).notNull(),
-    amount: real("amount").notNull(),
+    type: text("type")
+      .$type<
+        | "expense"
+        | "income"
+        | "transfer"
+        | "loan_given"
+        | "loan_taken"
+        | "repayment_received"
+        | "repayment_made"
+      >()
+      .notNull(),
+    amount: doublePrecision("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
     description: text("description").notNull(),
     notes: text("notes"),
-    date: integer("date", { mode: "timestamp" }).notNull(),
-    paymentMethod: text("payment_method", {
-      enum: ["cash", "credit_card", "debit_card", "bank_transfer", "upi", "other"],
-    })
+    date: timestamp("date", { withTimezone: true }).notNull(),
+    paymentMethod: text("payment_method")
+      .$type<"cash" | "credit_card" | "debit_card" | "bank_transfer" | "upi" | "other">()
       .notNull()
       .default("cash"),
-    isRecurring: integer("is_recurring", { mode: "boolean" }).notNull().default(false),
-    recurringFrequency: text("recurring_frequency", { enum: ["daily", "weekly", "monthly", "yearly"] }),
+    isRecurring: boolean("is_recurring").notNull().default(false),
+    recurringFrequency: text("recurring_frequency").$type<
+      "daily" | "weekly" | "monthly" | "yearly"
+    >(),
     tags: text("tags"),
     receiptUrl: text("receipt_url"),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(now),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(now),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
   },
   (t) => ({
     userDateIdx: index("tx_user_date_idx").on(t.userId, t.date),
@@ -82,7 +92,7 @@ export const transactions = sqliteTable(
   })
 );
 
-export const budgets = sqliteTable(
+export const budgets = pgTable(
   "budgets",
   {
     id: text("id").primaryKey(),
@@ -90,12 +100,12 @@ export const budgets = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     categoryId: text("category_id").references(() => categories.id, { onDelete: "cascade" }),
-    amount: real("amount").notNull(),
-    period: text("period", { enum: ["weekly", "monthly", "yearly"] }).notNull().default("monthly"),
-    startDate: integer("start_date", { mode: "timestamp" }).notNull(),
-    endDate: integer("end_date", { mode: "timestamp" }),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(now),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(now),
+    amount: doublePrecision("amount").notNull(),
+    period: text("period").$type<"weekly" | "monthly" | "yearly">().notNull().default("monthly"),
+    startDate: timestamp("start_date", { withTimezone: true }).notNull(),
+    endDate: timestamp("end_date", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
   },
   (t) => ({
     userIdx: index("budgets_user_idx").on(t.userId),

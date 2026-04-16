@@ -14,8 +14,7 @@ export async function DELETE(req: Request) {
 
   await db
     .delete(transactions)
-    .where(and(eq(transactions.userId, auth.userId), inArray(transactions.id, parsed.data.ids)))
-    .run();
+    .where(and(eq(transactions.userId, auth.userId), inArray(transactions.id, parsed.data.ids)));
 
   return ok({ deleted: parsed.data.ids.length });
 }
