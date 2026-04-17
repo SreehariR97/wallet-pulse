@@ -25,7 +25,7 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on mo
 - **Loan tracking** — first-class transaction types for money lent, borrowed, and repaid, so loans don't pollute your income/expense totals.
 - **CSV import / export** with column mapping, plus JSON backup for full portability.
 - **Recurring transactions** flagged with a badge so you can see your fixed costs at a glance.
-- **Dark-first UI** on a refined slate + indigo/cyan palette, using Plus Jakarta Sans. Responsive down to 375px with a mobile nav and quick-add FAB.
+- **Superhuman-inspired UI** — light-default palette of Mysteria-purple hero accents, Lavender Glow highlights, Warm Cream buttons, Charcoal Ink text, and Parchment borders, set in Inter Tight variable font with non-standard 460/540 weight stops. Dark theme via next-themes. Responsive down to 375px with a mobile nav and quick-add FAB.
 - **Polished UX** — toasts, skeletons, empty states, confirm dialogs, and keyboard-accessible Radix primitives throughout.
 
 ---
@@ -46,7 +46,8 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on mo
 | Layer | Choice |
 | --- | --- |
 | Framework | **Next.js 14** (App Router) + React 18 + TypeScript |
-| Styling | **Tailwind CSS** + custom HSL theme tokens (dark + light) |
+| Styling | **Tailwind CSS** + custom HSL theme tokens (dark + light), Superhuman-inspired design system documented in [DESIGN.md](./DESIGN.md) |
+| Typography | **Inter Tight** variable font via `next/font/google` |
 | UI primitives | **shadcn/ui** on top of **Radix UI** |
 | Charts | **Recharts** |
 | Database | **Postgres** via **Neon serverless driver** (`@neondatabase/serverless`) |
