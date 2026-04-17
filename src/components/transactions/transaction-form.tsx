@@ -22,6 +22,8 @@ export interface TransactionFormValues {
   notes: string;
   date: string;
   paymentMethod: PaymentMethod;
+  /** Empty string = none; otherwise an active card id. */
+  creditCardId: string;
   isRecurring: boolean;
   recurringFrequency: RecurringFrequency | "";
   tags: string;
@@ -35,10 +37,19 @@ const DEFAULT: TransactionFormValues = {
   notes: "",
   date: format(new Date(), "yyyy-MM-dd"),
   paymentMethod: "credit_card",
+  creditCardId: "",
   isRecurring: false,
   recurringFrequency: "",
   tags: "",
 };
+
+interface CardOption {
+  id: string;
+  name: string;
+  last4: string | null;
+}
+
+const NONE_VALUE = "__none__";
 
 type TypeButton = { type: TxType; label: string; subtitle: string };
 
@@ -82,10 +93,20 @@ export function TransactionForm({
   const [values, setValues] = React.useState<TransactionFormValues>({ ...DEFAULT, ...initial });
   const [pending, setPending] = React.useState<"save" | "saveAdd" | null>(null);
   const [errors, setErrors] = React.useState<Record<string, string[] | undefined>>({});
+  const [cards, setCards] = React.useState<CardOption[]>([]);
 
   React.useEffect(() => {
     if (!loaded) fetchCats();
   }, [loaded, fetchCats]);
+
+  React.useEffect(() => {
+    // Active cards only — archived cards are intentionally excluded from
+    // the picker (stage 3 rule). Legacy transactions retain their FK.
+    fetch("/api/credit-cards")
+      .then((r) => r.json())
+      .then((j) => setCards((j.data ?? []) as CardOption[]))
+      .catch(() => {});
+  }, []);
 
   const requiredCategoryType = categoryTypeForTransactionType(values.type);
   const filteredCategories = React.useMemo(
@@ -104,7 +125,13 @@ export function TransactionForm({
   }, [values.type, requiredCategoryType, categories, filteredCategories, values.categoryId]);
 
   function set<K extends keyof TransactionFormValues>(k: K, v: TransactionFormValues[K]) {
-    setValues((p) => ({ ...p, [k]: v }));
+    setValues((p) => {
+      const next = { ...p, [k]: v };
+      // Auto-clear creditCardId if paymentMethod leaves credit_card. Keeps
+      // the client in sync with the server's coherence check on PUT.
+      if (k === "paymentMethod" && v !== "credit_card") next.creditCardId = "";
+      return next;
+    });
     if (errors[k as string]) setErrors((e) => ({ ...e, [k as string]: undefined }));
   }
 
@@ -116,6 +143,7 @@ export function TransactionForm({
       amount: values.amount,
       notes: values.notes || null,
       tags: values.tags || null,
+      creditCardId: values.creditCardId || null,
       recurringFrequency: values.isRecurring ? values.recurringFrequency || null : null,
     };
     const url = mode === "create" ? "/api/transactions" : `/api/transactions/${transactionId}`;
@@ -275,6 +303,32 @@ export function TransactionForm({
           </SelectContent>
         </Select>
       </div>
+
+      {values.paymentMethod === "credit_card" && cards.length > 0 && (
+        <div className="grid gap-1.5">
+          <Label>Card</Label>
+          <Select
+            value={values.creditCardId || NONE_VALUE}
+            onValueChange={(v) => set("creditCardId", v === NONE_VALUE ? "" : v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Pick a card" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE_VALUE}>— None —</SelectItem>
+              {cards.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                  {c.last4 ? ` · ···· ${c.last4}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Optional — reflects on the card&apos;s balance and cycle if set.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-1.5">
         <Label htmlFor="notes">Notes (optional)</Label>

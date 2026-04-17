@@ -40,6 +40,11 @@ export interface TransactionListItem {
   categoryName: string | null;
   categoryIcon: string | null;
   categoryColor: string | null;
+  // Card-tag fields — optional because the cycle endpoint selects them but
+  // the dashboard recent list doesn't. Undefined = card wasn't queried.
+  creditCardId?: string | null;
+  creditCardName?: string | null;
+  creditCardLast4?: string | null;
   createdAt: string | number | Date;
 }
 

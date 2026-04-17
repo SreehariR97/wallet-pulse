@@ -10,8 +10,10 @@ import { TrendChart, type TrendPoint } from "@/components/charts/trend-chart";
 import { CategoryDonut, type CategorySlice } from "@/components/charts/category-donut";
 import { BudgetProgressList, type BudgetProgressItem } from "./budget-progress";
 import { RecentTransactions } from "./recent-transactions";
+import { CardsWidget } from "./cards-widget";
 import { useMonthRange } from "@/hooks/useMonthRange";
 import type { TransactionListItem } from "@/types";
+import type { CreditCardSummary } from "@/components/credit-cards/card-tile";
 
 export function DashboardView({ userName, currency }: { userName: string; currency: string }) {
   const range = useMonthRange();
@@ -20,6 +22,7 @@ export function DashboardView({ userName, currency }: { userName: string; curren
   const [byCategory, setByCategory] = React.useState<CategorySlice[]>([]);
   const [budgets, setBudgets] = React.useState<BudgetProgressItem[]>([]);
   const [recent, setRecent] = React.useState<TransactionListItem[]>([]);
+  const [cards, setCards] = React.useState<CreditCardSummary[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -27,12 +30,13 @@ export function DashboardView({ userName, currency }: { userName: string; curren
     async function load() {
       setLoading(true);
       const qs = `from=${range.from}&to=${range.to}`;
-      const [s, t, c, b, r] = await Promise.all([
+      const [s, t, c, b, r, cc] = await Promise.all([
         fetch(`/api/analytics/summary?${qs}`).then((r) => r.json()),
         fetch(`/api/analytics/trends?${qs}&granularity=daily`).then((r) => r.json()),
         fetch(`/api/analytics/category-breakdown?${qs}&type=expense`).then((r) => r.json()),
         fetch(`/api/budgets`).then((r) => r.json()),
         fetch(`/api/transactions?page=1&limit=10&sort=date&order=desc`).then((r) => r.json()),
+        fetch(`/api/credit-cards`).then((r) => r.json()),
       ]);
       if (cancelled) return;
       setSummary(s.data ?? null);
@@ -40,6 +44,7 @@ export function DashboardView({ userName, currency }: { userName: string; curren
       setByCategory(c.data ?? []);
       setBudgets(b.data ?? []);
       setRecent(r.data ?? []);
+      setCards(cc.data ?? []);
       setLoading(false);
     }
     load();
@@ -74,6 +79,8 @@ export function DashboardView({ userName, currency }: { userName: string; curren
       />
 
       <SummaryCards data={summary} currency={currency} loading={loading} />
+
+      <CardsWidget cards={cards} currency={currency} />
 
       <div className="grid gap-4 lg:grid-cols-5">
         <ChartCard
