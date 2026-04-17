@@ -17,7 +17,9 @@
     "db:seed": "tsx src/lib/db/seed.ts",
     "db:bootstrap-dev": "tsx scripts/bootstrap-dev.ts",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.7.4",
@@ -78,6 +80,7 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.4"
   }
 }

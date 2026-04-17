@@ -37,6 +37,7 @@ export default async function EditTransactionPage({ params }: { params: { id: st
               notes: row.notes ?? "",
               date: format(row.date, "yyyy-MM-dd"),
               paymentMethod: row.paymentMethod,
+              creditCardId: row.creditCardId ?? "",
               isRecurring: row.isRecurring,
               recurringFrequency: (row.recurringFrequency ?? "") as any,
               tags: row.tags ?? "",

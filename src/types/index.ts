@@ -6,7 +6,7 @@ export type TxType =
   | "loan_taken"
   | "repayment_received"
   | "repayment_made";
-export type CategoryType = "expense" | "income" | "loan";
+export type CategoryType = "expense" | "income" | "loan" | "transfer";
 export type PaymentMethod = "cash" | "credit_card" | "debit_card" | "bank_transfer" | "upi" | "other";
 export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -40,6 +40,11 @@ export interface TransactionListItem {
   categoryName: string | null;
   categoryIcon: string | null;
   categoryColor: string | null;
+  // Card-tag fields — optional because the cycle endpoint selects them but
+  // the dashboard recent list doesn't. Undefined = card wasn't queried.
+  creditCardId?: string | null;
+  creditCardName?: string | null;
+  creditCardLast4?: string | null;
   createdAt: string | number | Date;
 }
 

@@ -16,11 +16,21 @@ export interface TxFilterValues {
   type?: TxType;
   categoryId?: string;
   paymentMethod?: PaymentMethod;
+  /** Specific credit card id; pass "none" to filter for no-card transactions. */
+  creditCardId?: string;
+  /** Server-side shortcut combining type=transfer with FK presence. */
+  shortcut?: "card_payments" | "remittances";
   from?: string;
   to?: string;
   minAmount?: string;
   maxAmount?: string;
   tags?: string;
+}
+
+interface CardOption {
+  id: string;
+  name: string;
+  last4: string | null;
 }
 
 const ALL = "__all__";
@@ -57,15 +67,53 @@ export function TransactionFilters({
   values: TxFilterValues;
   onChange: (v: TxFilterValues) => void;
 }) {
-  const { items: categories, fetch, loaded } = useCategories();
+  const { items: categories, fetch: fetchCats, loaded } = useCategories();
   const [open, setOpen] = React.useState(false);
+  const [cards, setCards] = React.useState<CardOption[]>([]);
 
   React.useEffect(() => {
-    if (!loaded) fetch();
-  }, [loaded, fetch]);
+    if (!loaded) fetchCats();
+  }, [loaded, fetchCats]);
 
-  const activeCount = [values.type, values.categoryId, values.paymentMethod, values.from || values.to, values.minAmount, values.maxAmount, values.tags]
-    .filter(Boolean).length;
+  React.useEffect(() => {
+    // Active cards only — archived cards don't appear in picker (stage 3 rule).
+    fetch("/api/credit-cards")
+      .then((r) => r.json())
+      .then((j) => setCards((j.data ?? []) as CardOption[]))
+      .catch(() => {});
+  }, []);
+
+  const activeCount = [
+    values.type,
+    values.shortcut,
+    values.categoryId,
+    values.paymentMethod,
+    values.creditCardId,
+    values.from || values.to,
+    values.minAmount,
+    values.maxAmount,
+    values.tags,
+  ].filter(Boolean).length;
+
+  // One Select drives both "type" and "shortcut" filter fields. Picking a
+  // shortcut clears the plain type (and vice versa) — they're mutually
+  // exclusive selections even though the server accepts them together.
+  const typeSelectValue = values.shortcut
+    ? `shortcut:${values.shortcut}`
+    : values.type ?? ALL;
+
+  function handleTypeChange(v: string) {
+    if (v === ALL) {
+      onChange({ ...values, type: undefined, shortcut: undefined });
+      return;
+    }
+    if (v.startsWith("shortcut:")) {
+      const shortcut = v.slice("shortcut:".length) as TxFilterValues["shortcut"];
+      onChange({ ...values, type: undefined, shortcut });
+      return;
+    }
+    onChange({ ...values, type: v as TxType, shortcut: undefined });
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -95,18 +143,21 @@ export function TransactionFilters({
         </SelectContent>
       </Select>
 
-      <Select value={values.type ?? ALL} onValueChange={(v) => onChange({ ...values, type: toFilterParam(v) as TxType | undefined })}>
-        <SelectTrigger className="w-[170px]">
+      <Select value={typeSelectValue} onValueChange={handleTypeChange}>
+        <SelectTrigger className="w-[180px]">
           <SelectValue placeholder="Type" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All types</SelectItem>
           <SelectItem value="expense">Expense</SelectItem>
           <SelectItem value="income">Income</SelectItem>
+          <SelectItem value="transfer">Transfer</SelectItem>
           <SelectItem value="loan_given">Loan Given</SelectItem>
           <SelectItem value="loan_taken">Loan Taken</SelectItem>
           <SelectItem value="repayment_received">Repayment In</SelectItem>
           <SelectItem value="repayment_made">Repayment Out</SelectItem>
+          <SelectItem value="shortcut:card_payments">Card payments</SelectItem>
+          <SelectItem value="shortcut:remittances">Remittances</SelectItem>
         </SelectContent>
       </Select>
 
@@ -153,6 +204,31 @@ export function TransactionFilters({
                 </SelectContent>
               </Select>
             </div>
+            {cards.length > 0 && (
+              <div>
+                <Label className="mb-2 block text-xs">Card</Label>
+                <Select
+                  value={values.creditCardId ?? ALL}
+                  onValueChange={(v) =>
+                    onChange({ ...values, creditCardId: toFilterParam(v) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Any card" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>Any card</SelectItem>
+                    <SelectItem value="none">— None —</SelectItem>
+                    {cards.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                        {c.last4 ? ` · ···· ${c.last4}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Separator />
             <div className="grid grid-cols-2 gap-2">
               <div>

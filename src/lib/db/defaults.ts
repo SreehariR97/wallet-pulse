@@ -2,7 +2,7 @@ export const DEFAULT_CATEGORIES: Array<{
   name: string;
   icon: string;
   color: string;
-  type: "expense" | "income" | "loan";
+  type: "expense" | "income" | "loan" | "transfer";
 }> = [
   { name: "Salary", icon: "💰", color: "#22C55E", type: "income" },
   { name: "Freelance", icon: "💻", color: "#3B82F6", type: "income" },
@@ -25,4 +25,13 @@ export const DEFAULT_CATEGORIES: Array<{
   // Loan-tracking defaults — used for loan_given, loan_taken, repayment_received, repayment_made
   { name: "Friends & Family", icon: "🤝", color: "#A855F7", type: "loan" },
   { name: "Personal Loan", icon: "🏦", color: "#6366F1", type: "loan" },
+  // Transfer defaults — used by credit card repayments and international remittances.
+  // Names are load-bearing: the backfill script + API helpers look these up by name.
+  { name: "Credit Card Payment", icon: "💳", color: "#A78BFA", type: "transfer" },
+  { name: "International Transfer", icon: "🌐", color: "#A78BFA", type: "transfer" },
 ];
+
+export const TRANSFER_CATEGORY_NAMES = {
+  creditCardPayment: "Credit Card Payment",
+  internationalTransfer: "International Transfer",
+} as const;

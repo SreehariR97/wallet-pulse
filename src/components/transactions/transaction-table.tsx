@@ -2,7 +2,7 @@
 import Link from "next/link";
 import * as React from "react";
 import { format } from "date-fns";
-import { ArrowDown, ArrowUp, ChevronsUpDown, MoreHorizontal, Pencil, Trash2, Repeat } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, CreditCard, MoreHorizontal, Pencil, Trash2, Repeat } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -105,15 +105,24 @@ export function TransactionTable({
                       {t.description}
                       {t.isRecurring && <Repeat className="h-3 w-3 text-accent-foreground" aria-label="Recurring" />}
                     </div>
-                    {t.tags && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {t.tags.split(",").slice(0, 3).map((tag) => (
-                          <span key={tag} className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-[500] text-muted-foreground">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                      {t.creditCardId && t.creditCardName && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.06em] text-muted-foreground">
+                          <CreditCard className="h-3 w-3" />
+                          {t.creditCardName}
+                          {t.creditCardLast4 ? ` · ${t.creditCardLast4}` : ""}
+                        </span>
+                      )}
+                      {t.tags &&
+                        t.tags.split(",").slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-[500] text-muted-foreground"
+                          >
                             {tag.trim()}
                           </span>
                         ))}
-                      </div>
-                    )}
+                    </div>
                   </td>
                   <td className="hidden px-3 py-3.5 text-[12px] font-[460] text-muted-foreground md:table-cell">
                     {paymentMethodLabel(t.paymentMethod)}

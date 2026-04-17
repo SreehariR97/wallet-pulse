@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { and, asc, desc, eq, gte, lte, ilike, sql, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, ilike, isNotNull, isNull, sql, or, exists } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { transactions, categories } from "@/lib/db/schema";
+import { transactions, categories, creditCards, remittances } from "@/lib/db/schema";
 import { transactionCreateSchema, transactionQuerySchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 
@@ -19,6 +19,26 @@ export async function GET(req: Request) {
   if (q.categoryId) filters.push(eq(transactions.categoryId, q.categoryId));
   if (q.type) filters.push(eq(transactions.type, q.type));
   if (q.paymentMethod) filters.push(eq(transactions.paymentMethod, q.paymentMethod));
+  if (q.creditCardId) {
+    // "none" → no card attached; any other value → specific card.
+    if (q.creditCardId === "none") filters.push(isNull(transactions.creditCardId));
+    else filters.push(eq(transactions.creditCardId, q.creditCardId));
+  }
+  // Shortcut filters — layered on top of other filters.
+  if (q.shortcut === "card_payments") {
+    filters.push(eq(transactions.type, "transfer"));
+    filters.push(isNotNull(transactions.creditCardId));
+  } else if (q.shortcut === "remittances") {
+    filters.push(eq(transactions.type, "transfer"));
+    filters.push(
+      exists(
+        db
+          .select({ one: sql<number>`1` })
+          .from(remittances)
+          .where(eq(remittances.transactionId, transactions.id)),
+      ),
+    );
+  }
   if (q.from) filters.push(gte(transactions.date, new Date(q.from + "T00:00:00.000Z")));
   if (q.to) filters.push(lte(transactions.date, new Date(q.to + "T23:59:59.999Z")));
   if (q.minAmount !== undefined) filters.push(gte(transactions.amount, q.minAmount));
@@ -61,10 +81,14 @@ export async function GET(req: Request) {
       categoryName: categories.name,
       categoryIcon: categories.icon,
       categoryColor: categories.color,
+      creditCardId: transactions.creditCardId,
+      creditCardName: creditCards.name,
+      creditCardLast4: creditCards.last4,
       createdAt: transactions.createdAt,
     })
     .from(transactions)
     .leftJoin(categories, eq(transactions.categoryId, categories.id))
+    .leftJoin(creditCards, eq(transactions.creditCardId, creditCards.id))
     .where(whereClause)
     .orderBy(ordering)
     .limit(q.limit)
@@ -89,6 +113,24 @@ export async function POST(req: Request) {
     .limit(1);
   if (!cat) return fail(400, "Invalid category");
 
+  // Re-verify card ownership server-side — a malicious payload could reference
+  // another user's card id. Only accept active cards via the standard flow;
+  // archived cards are edit-only through the admin/hard-delete path.
+  if (t.creditCardId) {
+    const [card] = await db
+      .select({ id: creditCards.id })
+      .from(creditCards)
+      .where(
+        and(
+          eq(creditCards.id, t.creditCardId),
+          eq(creditCards.userId, auth.userId),
+          eq(creditCards.isActive, true),
+        ),
+      )
+      .limit(1);
+    if (!card) return fail(400, "Invalid credit card");
+  }
+
   const id = randomUUID();
   await db
     .insert(transactions)
@@ -103,6 +145,7 @@ export async function POST(req: Request) {
       notes: t.notes ?? null,
       date: new Date(t.date + "T12:00:00.000Z"),
       paymentMethod: t.paymentMethod,
+      creditCardId: t.creditCardId ?? null,
       isRecurring: t.isRecurring,
       recurringFrequency: t.isRecurring ? t.recurringFrequency ?? null : null,
       tags: t.tags ?? null,

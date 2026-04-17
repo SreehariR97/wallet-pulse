@@ -44,8 +44,10 @@ export function TransactionsView({ currency }: { currency: string }) {
     p.set("order", order);
     if (debouncedSearch) p.set("search", debouncedSearch);
     if (filters.type) p.set("type", filters.type);
+    if (filters.shortcut) p.set("shortcut", filters.shortcut);
     if (filters.categoryId) p.set("categoryId", filters.categoryId);
     if (filters.paymentMethod) p.set("paymentMethod", filters.paymentMethod);
+    if (filters.creditCardId) p.set("creditCardId", filters.creditCardId);
     if (filters.from) p.set("from", filters.from);
     if (filters.to) p.set("to", filters.to);
     if (filters.minAmount) p.set("minAmount", filters.minAmount);
