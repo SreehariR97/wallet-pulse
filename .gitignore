@@ -8,3 +8,4 @@ data/
 drizzle/meta/
 coverage
 dist
+.claude/settings.local.json
