@@ -61,6 +61,11 @@ export async function POST(req: Request) {
     userCats.find((c) => c.type === "expense");
   const fallbackIncome = userCats.find((c) => c.type === "income");
   const fallbackLoan = userCats.find((c) => c.type === "loan");
+  // Transfer rows without a named category land here. Credit-card-specific
+  // and remittance-specific metadata do NOT round-trip through CSV in v1 —
+  // imported transfers lose their card link / FX rate / fee.
+  const fallbackTransfer =
+    userCats.find((c) => c.type === "transfer") ?? fallbackExpense;
 
   // Two-pass: first validate every row and build the insert payload, then
   // commit the batch. That way we never leave a partial import behind even
@@ -103,7 +108,9 @@ export async function POST(req: Request) {
         ? fallbackLoan
         : type === "income"
           ? fallbackIncome
-          : fallbackExpense;
+          : type === "transfer"
+            ? fallbackTransfer
+            : fallbackExpense;
       if (!fb) {
         errors.push({ row: idx + 1, error: "No category available to assign" });
         return;

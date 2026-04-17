@@ -1,9 +1,24 @@
-# Post-redesign follow-ups
+# Follow-ups
 
-Items intentionally left out of the Superhuman redesign PR to keep scope
-tight. Each is a discrete, independent task.
+Items intentionally left out of recent PRs to keep scope tight. Each is a
+discrete, independent task. Stage 6 of the credit-cards + remittances PR
+did a consolidation pass — check before adding (avoid duplication).
 
-## 1. Align `warning` semantics across the app
+## Credit cards + remittances
+
+### Cycle-spend N+1 on GET /api/credit-cards
+
+[src/app/api/credit-cards/route.ts](src/app/api/credit-cards/route.ts)
+issues one aggregate query per card (via `Promise.all`) to compute
+current-cycle spend. Fine for realistic card counts (≤10). **Trigger:** if
+any user accumulates ~50+ cards (especially if `?includeArchived=1` becomes
+a hot path), collapse into a single UNION ALL across per-card date windows,
+or move cycleSpend out of the list response entirely and fetch it lazily
+per card on hover.
+
+## Post-redesign
+
+### Align `warning` semantics across the app
 
 The warning token (`35 70% 45%`) is currently overloaded:
 
@@ -15,7 +30,7 @@ out as a loan"). Pick one or introduce a distinct token for the other
 context. Likely outcome: budget keeps amber; loan types move to a neutral
 or lavender treatment.
 
-## 2. Empty-state audit
+### Empty-state audit
 
 Several `EmptyState` usages weren't reachable during the redesign because
 the demo account has data. These were not runtime-verified:
@@ -33,11 +48,11 @@ explainer (Superhuman voice), not as a broken page. The
 [mom-table.tsx](src/components/analytics/mom-table.tsx) empty state was
 rewritten this way during stage 5.5 as a template.
 
-## 3. Drop unused `Badge` import
+### Drop unused `Badge` import
 
 [categories-view.tsx:7](src/components/categories/categories-view.tsx) — the "default" indicator was demoted from a `Badge` to a plain caption span in stage 5.7, but the `Badge` import was left in to comply with the "no unrelated cleanup" rule of the redesign. Trivial delete, zero risk.
 
-## 4. Chart/data visibility for sparse periods
+### Chart/data visibility for sparse periods
 
 The demo has 15 days of April 2026 transactions with a single income spike
 on Apr 1. On the dashboard trend chart (area mode, daily granularity), 14
@@ -53,7 +68,7 @@ correctly (confirmed by SVG path inspection). Fixes to consider:
 Not a redesign concern — the chart tokens are correct; this is a data-viz
 readability tradeoff.
 
-## 5. Pie geometry quirk
+### Pie geometry quirk
 
 In stage 6, bumping `innerRadius` 60→62, `outerRadius` 95→96 and
 `paddingAngle` 2→1.5 on `<Pie>` in [category-donut.tsx](src/components/charts/category-donut.tsx) and
@@ -63,7 +78,7 @@ original values. Worth reporting upstream or pinning a Recharts version
 note — a 1–2 pixel sizing change should not silently break SVG path
 generation.
 
-## 6. Chart palette: SSR vs CSS-var tradeoff (context for future maintainers)
+### Chart palette: SSR vs CSS-var tradeoff (context for future maintainers)
 
 Charts in [src/components/charts/](src/components/charts/) use baked HSL
 literals in [palette.ts](src/components/charts/palette.ts) rather than
@@ -87,7 +102,7 @@ no FOUC on analytics page with throttled CPU/network in DevTools. Stage 6
 tested with the Pie geometry bug (item 5) which made the regression
 obvious; otherwise the FOUC is subtle but present.
 
-## 7. Theme toggle hydration guard
+### Theme toggle hydration guard
 
 [settings-view.tsx](src/components/settings/settings-view.tsx) uses a
 `themeReady` flag so the active theme button doesn't render as `outline`

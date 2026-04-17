@@ -6,7 +6,7 @@ export type TxType =
   | "loan_taken"
   | "repayment_received"
   | "repayment_made";
-export type CategoryType = "expense" | "income" | "loan";
+export type CategoryType = "expense" | "income" | "loan" | "transfer";
 export type PaymentMethod = "cash" | "credit_card" | "debit_card" | "bank_transfer" | "upi" | "other";
 export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly";
 

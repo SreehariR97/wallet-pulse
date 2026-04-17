@@ -238,7 +238,7 @@ Helpers live in `src/lib/api.ts`.
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/auth/register` | Create a new account (also seeds default categories) |
-| `GET`  | `/api/transactions` | Paginated list with filters (category, type, payment method, date range, search, amount range, tags) |
+| `GET`  | `/api/transactions` | Paginated list with filters (category, type, payment method, date range, search, amount range, tags, `creditCardId`, `shortcut=card_payments\|remittances`) |
 | `POST` | `/api/transactions` | Create a transaction |
 | `PUT`  | `/api/transactions/:id` | Update |
 | `DELETE` | `/api/transactions/:id` | Delete |
@@ -251,6 +251,19 @@ Helpers live in `src/lib/api.ts`.
 | `POST` | `/api/budgets` | Create |
 | `PUT`  | `/api/budgets/:id` | Update |
 | `DELETE` | `/api/budgets/:id` | Delete |
+| `GET`  | `/api/credit-cards` | List cards with computed balance, utilization %, current cycle window, next due date, min payment, cycle spend (`?includeArchived=1` to include archived) |
+| `POST` | `/api/credit-cards` | Create a card (name, issuer, last4, limit, statementDay, paymentDueDay, minimumPaymentPercent) |
+| `GET`  | `/api/credit-cards/:id` | Single-card detail + balance + cycle |
+| `PATCH` | `/api/credit-cards/:id` | Update card metadata (including `isActive` to archive/unarchive) |
+| `DELETE` | `/api/credit-cards/:id` | Archive (soft) by default; `?hard=1` hard-deletes only if no transactions reference the card |
+| `GET`  | `/api/credit-cards/:id/cycle?period=current\|previous\|N` | Cycle window + category breakdown + transactions |
+| `POST` | `/api/credit-cards/:id/pay` | Record a card repayment (creates a `transfer` transaction tagged to the card) |
+| `GET`  | `/api/remittances` | Paginated list of international transfers with joined tx fields (filters: service, date range) |
+| `POST` | `/api/remittances` | Create a remittance — atomic: creates the `transfer` transaction and remittance row together |
+| `GET`  | `/api/remittances/:id` | Single remittance detail |
+| `PATCH` | `/api/remittances/:id` | Edit either the tx-side fields (amount, date, …) or remittance-side fields (fxRate, fee, service, recipientNote) |
+| `DELETE` | `/api/remittances/:id` | Delete (cascades the underlying `transfer` transaction) |
+| `GET`  | `/api/remittances/stats` | Aggregates grouped by service: totalSent, totalFees, avgFxRate, totalDelivered |
 | `GET`  | `/api/analytics/summary` | Income, expense, net, savings rate for a range |
 | `GET`  | `/api/analytics/trends` | Daily / weekly / monthly series |
 | `GET`  | `/api/analytics/category-breakdown` | Totals per category |

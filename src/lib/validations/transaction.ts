@@ -12,20 +12,61 @@ export const transactionTypeEnum = z.enum([
 export const paymentMethodEnum = z.enum(["cash", "credit_card", "debit_card", "bank_transfer", "upi", "other"]);
 export const recurringFrequencyEnum = z.enum(["daily", "weekly", "monthly", "yearly"]);
 
-export const transactionCreateSchema = z.object({
-  type: transactionTypeEnum,
-  amount: z.coerce.number().positive("Amount must be greater than 0"),
-  categoryId: z.string().min(1, "Category is required"),
-  description: z.string().min(1, "Description is required").max(200),
-  notes: z.string().max(2000).optional().nullable(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
-  paymentMethod: paymentMethodEnum.default("cash"),
-  isRecurring: z.boolean().default(false),
-  recurringFrequency: recurringFrequencyEnum.optional().nullable(),
-  tags: z.string().max(500).optional().nullable(),
-});
+export const transactionCreateSchema = z
+  .object({
+    type: transactionTypeEnum,
+    amount: z.coerce.number().positive("Amount must be greater than 0"),
+    categoryId: z.string().min(1, "Category is required"),
+    description: z.string().min(1, "Description is required").max(200),
+    notes: z.string().max(2000).optional().nullable(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
+    paymentMethod: paymentMethodEnum.default("cash"),
+    // Optional FK. When set, paymentMethod must be "credit_card". The
+    // cross-field rule is enforced via superRefine below. Server routes
+    // separately re-verify that the card belongs to the authed user.
+    creditCardId: z.string().optional().nullable(),
+    isRecurring: z.boolean().default(false),
+    recurringFrequency: recurringFrequencyEnum.optional().nullable(),
+    tags: z.string().max(500).optional().nullable(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.creditCardId && val.paymentMethod !== "credit_card") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["paymentMethod"],
+        message: "paymentMethod must be credit_card when creditCardId is set",
+      });
+    }
+  });
 
-export const transactionUpdateSchema = transactionCreateSchema.partial();
+export const transactionUpdateSchema = z
+  .object({
+    type: transactionTypeEnum.optional(),
+    amount: z.coerce.number().positive().optional(),
+    categoryId: z.string().min(1).optional(),
+    description: z.string().min(1).max(200).optional(),
+    notes: z.string().max(2000).optional().nullable(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    paymentMethod: paymentMethodEnum.optional(),
+    creditCardId: z.string().optional().nullable(),
+    isRecurring: z.boolean().optional(),
+    recurringFrequency: recurringFrequencyEnum.optional().nullable(),
+    tags: z.string().max(500).optional().nullable(),
+  })
+  .superRefine((val, ctx) => {
+    // Only enforce when both fields are present in the patch — callers
+    // that clear creditCardId alone (pass null) don't need to also pass
+    // paymentMethod. If creditCardId is being set to a card id, a
+    // paymentMethod in the same patch must be credit_card (or absent, in
+    // which case the existing value is trusted — routes re-check if needed).
+    if (val.creditCardId && val.paymentMethod && val.paymentMethod !== "credit_card") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["paymentMethod"],
+        message: "paymentMethod must be credit_card when creditCardId is set",
+      });
+    }
+  });
 
 export const transactionBulkDeleteSchema = z.object({
   ids: z.array(z.string()).min(1),
@@ -37,6 +78,13 @@ export const transactionQuerySchema = z.object({
   categoryId: z.string().optional(),
   type: transactionTypeEnum.optional(),
   paymentMethod: paymentMethodEnum.optional(),
+  // Filter by attached credit card. Pass "none" to filter for transactions
+  // without a card; pass a card id to filter for that specific card.
+  creditCardId: z.string().optional(),
+  // Shortcut filters that combine type=transfer with the relevant FK check.
+  // "card_payments" → type=transfer AND creditCardId IS NOT NULL.
+  // "remittances"   → type=transfer AND a remittance row exists for the tx.
+  shortcut: z.enum(["card_payments", "remittances"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   search: z.string().optional(),
