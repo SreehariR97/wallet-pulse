@@ -156,7 +156,7 @@ The demo user ships with a handful of transactions and two budgets (Groceries $4
 src/
 ├── app/
 │   ├── (auth)/               # login + register
-│   ├── (protected)/          # dashboard, transactions, analytics, budgets, categories, settings
+│   ├── (protected)/          # dashboard, transactions, analytics, budgets, cards, remittances, categories, settings
 │   └── api/                  # REST-ish route handlers
 │       ├── auth/             # NextAuth handlers + registration
 │       ├── transactions/     # CRUD + bulk delete
