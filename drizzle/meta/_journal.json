@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1776445162431,
+      "tag": "0000_tough_iron_monger",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776445194959,
+      "tag": "0001_credit_cards_and_remittances",
+      "breakpoints": true
+    }
+  ]
+}
