@@ -32,13 +32,13 @@ export function SpendingHeatmap({
   padded.push(...days);
 
   function intensity(v: number): string {
-    if (v <= 0) return "bg-muted/50";
+    if (v <= 0) return "bg-foreground/[0.06]";
     const t = v / max;
-    if (t < 0.2) return "bg-primary/20";
-    if (t < 0.4) return "bg-primary/40";
-    if (t < 0.6) return "bg-primary/60";
-    if (t < 0.85) return "bg-primary/80";
-    return "bg-primary";
+    if (t < 0.2) return "bg-accent/30";
+    if (t < 0.4) return "bg-accent/55";
+    if (t < 0.6) return "bg-accent/80";
+    if (t < 0.85) return "bg-accent";
+    return "bg-[hsl(261_45%_58%)]";
   }
 
   return (
@@ -63,13 +63,13 @@ export function SpendingHeatmap({
           </div>
         ))}
       </div>
-      <div className="mt-3 flex items-center justify-end gap-2 text-xs text-muted-foreground">
+      <div className="mt-3 flex items-center justify-end gap-2 text-xs font-[460] text-muted-foreground">
         <span>Less</span>
-        <span className="h-3 w-3 rounded-[3px] bg-muted/50" />
-        <span className="h-3 w-3 rounded-[3px] bg-primary/40" />
-        <span className="h-3 w-3 rounded-[3px] bg-primary/60" />
-        <span className="h-3 w-3 rounded-[3px] bg-primary/80" />
-        <span className="h-3 w-3 rounded-[3px] bg-primary" />
+        <span className="h-3 w-3 rounded-[3px] bg-foreground/[0.06]" />
+        <span className="h-3 w-3 rounded-[3px] bg-accent/55" />
+        <span className="h-3 w-3 rounded-[3px] bg-accent/80" />
+        <span className="h-3 w-3 rounded-[3px] bg-accent" />
+        <span className="h-3 w-3 rounded-[3px] bg-[hsl(261_45%_58%)]" />
         <span>More</span>
       </div>
     </div>

@@ -112,7 +112,7 @@ export function TransactionFilters({
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button variant="ghost" size="sm" className="gap-2 font-[540]">
             <Filter className="h-4 w-4" />
             More filters
             {activeCount > 0 && <Badge className="ml-1 h-5 px-1.5">{activeCount}</Badge>}

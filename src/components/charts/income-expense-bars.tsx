@@ -2,6 +2,15 @@
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { format, parseISO } from "date-fns";
 import { formatCompactCurrency, formatCurrency } from "@/lib/utils";
+import {
+  AXIS_TICK,
+  CHART_DESTRUCTIVE,
+  CHART_SUCCESS,
+  CURSOR_FILL,
+  GRID_STROKE,
+  TOOLTIP_BG,
+  TOOLTIP_BORDER,
+} from "./palette";
 import type { TrendPoint } from "./trend-chart";
 
 export function IncomeExpenseBars({
@@ -27,23 +36,23 @@ export function IncomeExpenseBars({
   return (
     <ResponsiveContainer width="100%" height={280}>
       <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-        <XAxis dataKey="bucket" tickFormatter={tickFormatter} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickLine={false} axisLine={false} />
-        <YAxis tickFormatter={(v) => formatCompactCurrency(v, currency)} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+        <XAxis dataKey="bucket" tickFormatter={tickFormatter} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} />
+        <YAxis tickFormatter={(v) => formatCompactCurrency(v, currency)} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
         <Tooltip
           contentStyle={{
-            background: "hsl(var(--popover))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "var(--radius)",
+            background: TOOLTIP_BG,
+            border: `1px solid ${TOOLTIP_BORDER}`,
+            borderRadius: "0.75rem",
             fontSize: 12,
           }}
           labelFormatter={(v) => tickFormatter(String(v))}
           formatter={(value: number, name: string) => [formatCurrency(value, currency), name.charAt(0).toUpperCase() + name.slice(1)]}
-          cursor={{ fill: "hsl(var(--secondary))", opacity: 0.4 }}
+          cursor={{ fill: CURSOR_FILL, opacity: 0.6 }}
         />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-        <Bar dataKey="income" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="expense" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="income" fill={CHART_SUCCESS} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="expense" fill={CHART_DESTRUCTIVE} radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

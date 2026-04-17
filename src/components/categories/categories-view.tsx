@@ -101,7 +101,7 @@ export function CategoriesView() {
                 {items
                   .filter((c) => c.type === type)
                   .map((c) => (
-                    <Card key={c.id} className="group transition-colors hover:border-primary/40">
+                    <Card key={c.id} className="group transition-colors hover:border-foreground/30">
                       <CardContent className="flex items-center gap-3 p-4">
                         <div
                           className="flex h-11 w-11 items-center justify-center rounded-lg text-lg"
@@ -111,11 +111,15 @@ export function CategoriesView() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="truncate font-medium">{c.name}</span>
-                            {c.isDefault && <Badge variant="secondary" className="text-[10px]">default</Badge>}
+                            <span className="truncate font-[540] tracking-[-0.01em]">{c.name}</span>
+                            {c.isDefault && (
+                              <span className="text-[10px] font-[500] uppercase tracking-[0.08em] text-muted-foreground">
+                                default
+                              </span>
+                            )}
                           </div>
                           {c.budgetLimit != null && (
-                            <div className="mt-0.5 text-xs text-muted-foreground">Budget: {Number(c.budgetLimit).toFixed(2)}</div>
+                            <div className="mt-0.5 text-[12px] font-[460] text-muted-foreground">Budget: {Number(c.budgetLimit).toFixed(2)}</div>
                           )}
                         </div>
                         <DropdownMenu>
@@ -247,13 +251,13 @@ function CategoryDialog({
           </div>
           <div className="grid gap-1.5">
             <Label>Icon</Label>
-            <div className="grid max-h-32 grid-cols-11 gap-1 overflow-y-auto rounded-md border border-input bg-background/50 p-2">
+            <div className="grid max-h-32 grid-cols-11 gap-1 overflow-y-auto rounded-lg border border-input bg-muted p-2">
               {COMMON_ICONS.map((e) => (
                 <button
                   key={e}
                   type="button"
                   onClick={() => setIcon(e)}
-                  className={`flex h-8 w-8 items-center justify-center rounded text-lg transition-colors ${icon === e ? "bg-primary/20 ring-1 ring-primary" : "hover:bg-secondary"}`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg text-lg transition-colors ${icon === e ? "bg-accent ring-1 ring-foreground/30" : "hover:bg-secondary"}`}
                 >
                   {e}
                 </button>
@@ -269,7 +273,7 @@ function CategoryDialog({
                   key={c}
                   type="button"
                   onClick={() => setColor(c)}
-                  className={`h-7 w-7 rounded-full transition-transform ${color === c ? "ring-2 ring-offset-2 ring-offset-card ring-primary scale-110" : ""}`}
+                  className={`h-7 w-7 rounded-full transition-transform ${color === c ? "ring-2 ring-offset-2 ring-offset-card ring-foreground scale-110" : ""}`}
                   style={{ backgroundColor: c }}
                   aria-label={`Color ${c}`}
                 />

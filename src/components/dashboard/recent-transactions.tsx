@@ -42,12 +42,12 @@ export function RecentTransactions({
   }
 
   return (
-    <div className="-mx-2 divide-y divide-border/50">
+    <div className="-mx-2 divide-y divide-border">
       {items.map((t) => (
         <Link
           key={t.id}
           href={`/transactions/${t.id}/edit`}
-          className="flex items-center gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-secondary/60"
+          className="flex items-center gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-muted"
         >
           <span
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm"
@@ -56,14 +56,14 @@ export function RecentTransactions({
             {t.categoryIcon ?? "📦"}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{t.description}</div>
-            <div className="text-xs text-muted-foreground">
+            <div className="truncate text-sm font-[540] leading-[1.35]">{t.description}</div>
+            <div className="text-xs font-[460] leading-[1.4] text-muted-foreground">
               {t.categoryName ?? "Uncategorized"} · {format(dateFromSeconds(t.date), "MMM d")}
             </div>
           </div>
           <div className={cn(
-            "tabular-nums text-sm font-semibold",
-            t.type === "income" ? "text-success" : t.type === "expense" ? "text-destructive" : "text-foreground"
+            "tabular-nums text-sm font-[540]",
+            t.type === "income" ? "text-success" : t.type === "expense" ? "text-foreground" : "text-foreground"
           )}>
             {t.type === "income" ? "+" : t.type === "expense" ? "-" : ""}
             {formatCurrency(t.amount, t.currency ?? currency)}

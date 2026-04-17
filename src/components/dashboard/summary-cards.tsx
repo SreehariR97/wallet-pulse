@@ -1,5 +1,5 @@
 "use client";
-import { ArrowDownLeft, ArrowUpRight, PiggyBank, Wallet } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, PiggyBank } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
@@ -12,63 +12,89 @@ export interface SummaryData {
 }
 
 export function SummaryCards({ data, currency, loading }: { data: SummaryData | null; currency: string; loading: boolean }) {
-  const items: Array<{
+  const net = data?.net ?? 0;
+  const netPositive = net >= 0;
+  const secondary: Array<{
     label: string;
     value: string;
     icon: React.ElementType;
-    accent: string;
+    tone: "income" | "expense" | "savings";
     sub?: string;
   }> = [
     {
       label: "Income",
       value: data ? formatCurrency(data.income, currency) : "—",
       icon: ArrowDownLeft,
-      accent: "text-success bg-success/10",
+      tone: "income",
     },
     {
       label: "Expenses",
       value: data ? formatCurrency(data.expense, currency) : "—",
       icon: ArrowUpRight,
-      accent: "text-destructive bg-destructive/10",
-    },
-    {
-      label: "Net balance",
-      value: data ? formatCurrency(data.net, currency, true) : "—",
-      icon: Wallet,
-      accent: (data?.net ?? 0) >= 0 ? "text-primary bg-primary/10" : "text-destructive bg-destructive/10",
+      tone: "expense",
     },
     {
       label: "Savings rate",
       value: data ? formatPercent(data.savingsRate) : "—",
       icon: PiggyBank,
-      accent: (data?.savingsRate ?? 0) >= 20 ? "text-success bg-success/10" : "text-warning bg-warning/10",
+      tone: "savings",
       sub: data && data.income > 0 ? "of income saved" : "No income this month",
     },
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <Card key={item.label} className="overflow-hidden">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{item.label}</span>
-                <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", item.accent)}>
-                  <Icon className="h-4 w-4" />
+    <div className="grid gap-4 lg:grid-cols-5">
+      <Card className="lg:col-span-2 overflow-hidden">
+        <CardContent className="flex h-full flex-col justify-between p-6">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">Net balance</span>
+            <span className={cn(
+              "inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-[700] tracking-[-0.005em]",
+              netPositive ? "bg-accent text-accent-foreground" : "bg-destructive/15 text-destructive"
+            )}>
+              {netPositive ? "+" : "−"} this month
+            </span>
+          </div>
+          {loading ? (
+            <Skeleton className="mt-4 h-14 w-48" />
+          ) : (
+            <div className="mt-3 font-heading text-[48px] font-[540] leading-[0.96] tracking-[-0.03em] tabular-nums">
+              {data ? formatCurrency(Math.abs(net), currency) : "—"}
+            </div>
+          )}
+          <div className="mt-3 text-[13px] font-[460] leading-[1.4] text-muted-foreground">
+            {data
+              ? netPositive
+                ? "Income exceeded expenses this period."
+                : "Expenses exceeded income this period."
+              : "Loading your balance for the selected range."}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 sm:grid-cols-3 lg:col-span-3">
+        {secondary.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Card key={item.label} className="overflow-hidden">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">{item.label}</span>
+                  <Icon className="h-4 w-4 text-muted-foreground" />
                 </div>
-              </div>
-              {loading ? (
-                <Skeleton className="mt-3 h-8 w-32" />
-              ) : (
-                <div className="mt-2 font-heading text-2xl font-bold tracking-tight tabular-nums">{item.value}</div>
-              )}
-              {item.sub && <div className="mt-1 text-xs text-muted-foreground">{item.sub}</div>}
-            </CardContent>
-          </Card>
-        );
-      })}
+                {loading ? (
+                  <Skeleton className="mt-3 h-7 w-24" />
+                ) : (
+                  <div className="mt-2 font-heading text-[22px] font-[540] leading-[1.1] tracking-[-0.015em] tabular-nums">
+                    {item.value}
+                  </div>
+                )}
+                {item.sub && <div className="mt-1 text-[12px] font-[460] text-muted-foreground">{item.sub}</div>}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }

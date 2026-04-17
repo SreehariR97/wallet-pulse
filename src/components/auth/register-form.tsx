@@ -52,17 +52,17 @@ export function RegisterForm() {
       <div className="space-y-2">
         <Label htmlFor="name">Name</Label>
         <Input id="name" name="name" required placeholder="Alex Doe" />
-        {errors.name && <p className="text-xs text-destructive">{errors.name[0]}</p>}
+        {errors.name && <p className="text-xs font-[500] text-destructive">{errors.name[0]}</p>}
       </div>
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" />
-        {errors.email && <p className="text-xs text-destructive">{errors.email[0]}</p>}
+        {errors.email && <p className="text-xs font-[500] text-destructive">{errors.email[0]}</p>}
       </div>
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
         <Input id="password" name="password" type="password" autoComplete="new-password" required placeholder="At least 6 characters" />
-        {errors.password && <p className="text-xs text-destructive">{errors.password[0]}</p>}
+        {errors.password && <p className="text-xs font-[500] text-destructive">{errors.password[0]}</p>}
       </div>
       <Button type="submit" className="w-full" disabled={pending}>
         {pending && <Loader2 className="h-4 w-4 animate-spin" />}

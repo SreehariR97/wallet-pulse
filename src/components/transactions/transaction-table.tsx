@@ -13,15 +13,13 @@ import type { TransactionListItem, TxType } from "@/types";
 
 function amountColorClass(type: TxType): string {
   if (type === "income" || type === "repayment_received") return "text-success";
-  if (type === "expense" || type === "repayment_made") return "text-destructive";
   if (type === "loan_given") return "text-warning";
-  if (type === "loan_taken") return "text-primary";
   return "text-foreground";
 }
 
 function amountSign(type: TxType): string {
   if (isInflow(type)) return "+";
-  if (isOutflow(type)) return "-";
+  if (isOutflow(type)) return "−";
   return "";
 }
 
@@ -62,11 +60,11 @@ export function TransactionTable({
 
   return (
     <>
-      <div className="relative overflow-hidden rounded-lg border border-border/50 bg-card/40">
+      <div className="relative overflow-hidden rounded-lg border border-border">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border/50 bg-muted/30 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <tr className="border-b border-border bg-muted text-left text-[11px] font-[600] uppercase tracking-[0.08em] text-muted-foreground">
                 <th className="w-8 px-4 py-3">
                   <Checkbox checked={allSelected} onCheckedChange={(v) => onToggleSelectAll(!!v)} aria-label="Select all" />
                 </th>
@@ -80,49 +78,49 @@ export function TransactionTable({
             </thead>
             <tbody>
               {items.map((t) => (
-                <tr key={t.id} className="border-b border-border/30 transition-colors hover:bg-secondary/40">
-                  <td className="px-4 py-3">
+                <tr key={t.id} className="border-b border-border/60 transition-colors last:border-b-0 hover:bg-muted">
+                  <td className="px-4 py-3.5">
                     <Checkbox
                       checked={selected.has(t.id)}
                       onCheckedChange={() => onToggleSelect(t.id)}
                       aria-label={`Select ${t.description}`}
                     />
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">
+                  <td className="whitespace-nowrap px-3 py-3.5 text-[13px] font-[460] text-muted-foreground">
                     {format(dateFromSeconds(t.date), "MMM d, yyyy")}
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3.5">
                     <div className="flex items-center gap-2">
                       <span
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-sm"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-sm"
                         style={{ backgroundColor: (t.categoryColor ?? "#6366F1") + "22", color: t.categoryColor ?? "#6366F1" }}
                       >
                         {t.categoryIcon ?? "📦"}
                       </span>
-                      <span className="hidden sm:inline text-xs font-medium">{t.categoryName}</span>
+                      <span className="hidden sm:inline text-[13px] font-[540]">{t.categoryName}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-2 font-medium">
+                  <td className="px-3 py-3.5">
+                    <div className="flex items-center gap-2 font-[540] leading-[1.35]">
                       {t.description}
-                      {t.isRecurring && <Repeat className="h-3 w-3 text-primary" aria-label="Recurring" />}
+                      {t.isRecurring && <Repeat className="h-3 w-3 text-accent-foreground" aria-label="Recurring" />}
                     </div>
                     {t.tags && (
-                      <div className="mt-1 flex flex-wrap gap-1">
+                      <div className="mt-1.5 flex flex-wrap gap-1">
                         {t.tags.split(",").slice(0, 3).map((tag) => (
-                          <span key={tag} className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          <span key={tag} className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-[500] text-muted-foreground">
                             {tag.trim()}
                           </span>
                         ))}
                       </div>
                     )}
                   </td>
-                  <td className="hidden px-3 py-3 text-xs text-muted-foreground md:table-cell">
+                  <td className="hidden px-3 py-3.5 text-[12px] font-[460] text-muted-foreground md:table-cell">
                     {paymentMethodLabel(t.paymentMethod)}
                   </td>
                   <td
                     className={cn(
-                      "px-3 py-3 text-right font-mono font-semibold tabular-nums",
+                      "px-3 py-3.5 text-right font-[540] tabular-nums",
                       amountColorClass(t.type)
                     )}
                   >
@@ -132,13 +130,13 @@ export function TransactionTable({
                         {formatCurrency(t.amount, t.currency ?? currency)}
                       </span>
                       {isLoanType(t.type) && (
-                        <span className="text-[10px] font-normal uppercase tracking-wider opacity-70">
+                        <span className="text-[10px] font-[500] uppercase tracking-[0.08em] opacity-70">
                           {transactionTypeLabel(t.type)}
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3.5">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="icon" variant="ghost" aria-label="Actions">

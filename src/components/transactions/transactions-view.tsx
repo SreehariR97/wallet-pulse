@@ -147,8 +147,8 @@ export function TransactionsView({ currency }: { currency: string }) {
           </div>
 
           {selected.size > 0 && (
-            <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-4 py-2 text-sm">
-              <span className="font-medium">{selected.size} selected</span>
+            <div className="flex items-center justify-between rounded-lg border border-border bg-muted px-4 py-2 text-sm">
+              <span className="font-[540]">{selected.size} selected</span>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                   Clear

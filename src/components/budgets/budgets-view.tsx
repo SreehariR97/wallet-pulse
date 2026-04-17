@@ -39,15 +39,15 @@ const OVERALL_VALUE = "__overall__";
 function barColor(pct: number) {
   if (pct >= 100) return "bg-destructive";
   if (pct >= 80) return "bg-warning";
-  if (pct >= 50) return "bg-primary";
+  if (pct >= 50) return "bg-accent";
   return "bg-success";
 }
 
 function colorHex(pct: number) {
-  if (pct >= 100) return "hsl(var(--destructive))";
-  if (pct >= 80) return "hsl(var(--warning))";
-  if (pct >= 50) return "hsl(var(--primary))";
-  return "hsl(var(--success))";
+  if (pct >= 100) return "hsl(0 55% 55%)";
+  if (pct >= 80) return "hsl(35 65% 52%)";
+  if (pct >= 50) return "hsl(258 80% 72%)";
+  return "hsl(150 35% 48%)";
 }
 
 export function BudgetsView({ currency }: { currency: string }) {
@@ -98,10 +98,10 @@ export function BudgetsView({ currency }: { currency: string }) {
       />
 
       {overBudget.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3">
           <AlertTriangle className="h-5 w-5 text-destructive" />
-          <div className="flex-1 text-sm">
-            <span className="font-medium text-destructive">Over budget</span> —{" "}
+          <div className="flex-1 text-[13px] font-[460] leading-[1.45]">
+            <span className="font-[600] text-destructive">Over budget</span> —{" "}
             {overBudget.length === 1
               ? `"${overBudget[0].categoryName ?? "Overall"}" exceeded its limit`
               : `${overBudget.length} budgets have been exceeded this period`}
@@ -154,13 +154,13 @@ export function BudgetsView({ currency }: { currency: string }) {
                           {b.categoryIcon ?? "🎯"}
                         </div>
                         <div>
-                          <div className="font-semibold">{b.categoryName ?? "Overall"}</div>
-                          <div className="mt-0.5 flex items-center gap-2">
+                          <div className="font-[540] tracking-[-0.01em]">{b.categoryName ?? "Overall"}</div>
+                          <div className="mt-1 flex items-center gap-1.5">
                             <Badge variant="secondary" className="text-[10px] capitalize">
                               {b.period}
                             </Badge>
                             {pct >= 100 && (
-                              <Badge className="bg-destructive/20 text-destructive text-[10px]">over</Badge>
+                              <Badge className="bg-destructive/15 text-destructive text-[10px]">over</Badge>
                             )}
                           </div>
                         </div>
@@ -190,13 +190,13 @@ export function BudgetsView({ currency }: { currency: string }) {
 
                     <div className="mt-5">
                       <div className="flex items-baseline justify-between">
-                        <span className="font-heading text-2xl font-bold tabular-nums">
+                        <span className="font-heading text-[26px] font-[540] leading-[1] tracking-[-0.02em] tabular-nums">
                           {formatCurrency(b.spent, currency)}
                         </span>
-                        <span className="text-sm text-muted-foreground">of {formatCurrency(b.amount, currency)}</span>
+                        <span className="text-[13px] font-[460] text-muted-foreground">of {formatCurrency(b.amount, currency)}</span>
                       </div>
                       <Progress value={clamped} className="mt-3" indicatorClassName={cn(color, pct >= 100 && "animate-pulse")} />
-                      <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+                      <div className="mt-2 flex justify-between text-[11px] font-[500] text-muted-foreground">
                         <span className="tabular-nums">{pct.toFixed(0)}% used</span>
                         <span className="tabular-nums">
                           {pct >= 100
@@ -206,7 +206,7 @@ export function BudgetsView({ currency }: { currency: string }) {
                       </div>
                     </div>
 
-                    <div className="mt-4 text-[11px] text-muted-foreground">
+                    <div className="mt-4 text-[11px] font-[460] text-muted-foreground">
                       {format(parseISO(b.periodFrom), "MMM d")} – {format(parseISO(b.periodTo), "MMM d")}
                     </div>
                   </CardContent>
@@ -247,15 +247,15 @@ export function BudgetsView({ currency }: { currency: string }) {
                   contentStyle={{
                     background: "hsl(var(--popover))",
                     border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
+                    borderRadius: "0.75rem",
                     fontSize: 12,
                   }}
                   formatter={(v: number, n: string) => [formatCurrency(v, currency), n === "budget" ? "Budget" : "Spent"]}
-                  cursor={{ fill: "hsl(var(--secondary))", opacity: 0.4 }}
+                  cursor={{ fill: "hsl(var(--muted))", opacity: 0.6 }}
                 />
                 <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                <Bar dataKey="budget" fill="hsl(var(--primary) / 0.25)" radius={[0, 6, 6, 0]} />
-                <Bar dataKey="spent" radius={[0, 6, 6, 0]}>
+                <Bar dataKey="budget" fill="hsl(27 11% 78%)" radius={[0, 6, 6, 0]} />
+                <Bar dataKey="spent" fill="hsl(258 80% 72%)" radius={[0, 6, 6, 0]}>
                   {rows.map((r, i) => {
                     const pct = r.amount > 0 ? (r.spent / r.amount) * 100 : 0;
                     return <Cell key={i} fill={colorHex(pct)} />;

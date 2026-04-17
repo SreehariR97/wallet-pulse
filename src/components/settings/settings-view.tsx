@@ -26,6 +26,8 @@ interface Profile {
 export function SettingsView({ initial }: { initial: Profile }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const [themeReady, setThemeReady] = React.useState(false);
+  React.useEffect(() => setThemeReady(true), []);
 
   const [name, setName] = React.useState(initial.name);
   const [email, setEmail] = React.useState(initial.email);
@@ -97,7 +99,7 @@ export function SettingsView({ initial }: { initial: Profile }) {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Profile</CardTitle>
+            <CardTitle className="text-[17px] font-[540] tracking-[-0.015em]">Profile</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={saveProfile} className="space-y-4">
@@ -149,7 +151,7 @@ export function SettingsView({ initial }: { initial: Profile }) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Change password</CardTitle>
+            <CardTitle className="text-[17px] font-[540] tracking-[-0.015em]">Change password</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={savePassword} className="space-y-4">
@@ -173,28 +175,28 @@ export function SettingsView({ initial }: { initial: Profile }) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Appearance</CardTitle>
+            <CardTitle className="text-[17px] font-[540] tracking-[-0.015em]">Appearance</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Label>Theme</Label>
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
-                variant={theme === "dark" ? "default" : "outline"}
-                onClick={() => setTheme("dark")}
-                className="h-auto flex-col gap-1 py-3"
-              >
-                <Moon className="h-5 w-5" />
-                Dark
-              </Button>
-              <Button
-                type="button"
-                variant={theme === "light" ? "default" : "outline"}
+                variant={themeReady && theme === "light" ? "default" : "outline"}
                 onClick={() => setTheme("light")}
-                className="h-auto flex-col gap-1 py-3"
+                className="h-auto flex-col gap-1.5 py-4"
               >
                 <Sun className="h-5 w-5" />
                 Light
+              </Button>
+              <Button
+                type="button"
+                variant={themeReady && theme === "dark" ? "default" : "outline"}
+                onClick={() => setTheme("dark")}
+                className="h-auto flex-col gap-1.5 py-4"
+              >
+                <Moon className="h-5 w-5" />
+                Dark
               </Button>
             </div>
           </CardContent>
@@ -202,10 +204,10 @@ export function SettingsView({ initial }: { initial: Profile }) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Data</CardTitle>
+            <CardTitle className="text-[17px] font-[540] tracking-[-0.015em]">Data</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">Export your data anytime or import transactions from a CSV file.</p>
+            <p className="text-[13px] font-[460] leading-[1.5] text-muted-foreground">Export your data anytime or import transactions from a CSV file.</p>
             <div className="grid grid-cols-2 gap-2">
               <Button variant="outline" onClick={() => (window.location.href = "/api/export?format=csv")}>
                 <Download className="h-4 w-4" /> Export CSV
@@ -221,15 +223,17 @@ export function SettingsView({ initial }: { initial: Profile }) {
         </Card>
       </div>
 
-      <Card className="border-destructive/30">
+      <Card className="border-destructive/40 bg-destructive/[0.04]">
         <CardHeader>
-          <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
+          <CardTitle className="text-[17px] font-[540] tracking-[-0.015em] text-destructive">Danger zone</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="font-medium">Delete account</div>
-              <p className="text-sm text-muted-foreground">Permanently delete your account and all associated data. This cannot be undone.</p>
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="max-w-xl">
+              <div className="font-[540] tracking-[-0.005em]">Delete account</div>
+              <p className="mt-0.5 text-[13px] font-[460] leading-[1.5] text-muted-foreground">
+                Permanently delete your account and all associated data. This cannot be undone.
+              </p>
             </div>
             <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
               <Trash2 className="h-4 w-4" /> Delete

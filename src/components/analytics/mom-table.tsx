@@ -47,18 +47,25 @@ export function MomTable({
   rows.sort((a, b) => b.total - a.total);
 
   if (!rows.length) {
-    return <div className="py-10 text-center text-sm text-muted-foreground">No data for comparison</div>;
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <p className="font-heading text-[17px] font-[540] tracking-[-0.015em] text-foreground">Nothing to compare yet</p>
+        <p className="mt-1 max-w-xs text-[13px] font-[460] leading-[1.5] text-muted-foreground">
+          Log a few expenses this month and last month and this view will fill in.
+        </p>
+      </div>
+    );
   }
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border/50 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            <th className="py-2">Category</th>
-            <th className="py-2 text-right">Previous</th>
-            <th className="py-2 text-right">Current</th>
-            <th className="py-2 text-right">Δ</th>
+          <tr className="border-b border-border text-left text-[11px] font-[600] uppercase tracking-[0.08em] text-muted-foreground">
+            <th className="py-3">Category</th>
+            <th className="py-3 text-right">Previous</th>
+            <th className="py-3 text-right">Current</th>
+            <th className="py-3 text-right">Δ</th>
           </tr>
         </thead>
         <tbody>
@@ -67,24 +74,24 @@ export function MomTable({
             const down = r.change < 0;
             const Icon = up ? ArrowUp : down ? ArrowDown : Minus;
             return (
-              <tr key={r.categoryId} className="border-b border-border/30">
-                <td className="py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-md text-sm" style={{ backgroundColor: r.color + "22", color: r.color }}>
+              <tr key={r.categoryId} className="border-b border-border/60 last:border-b-0">
+                <td className="py-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg text-sm" style={{ backgroundColor: r.color + "22", color: r.color }}>
                       {r.icon}
                     </span>
-                    <span className="font-medium">{r.name}</span>
+                    <span className="font-[540] leading-[1.35]">{r.name}</span>
                   </div>
                 </td>
-                <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatCurrency(r.prev, currency)}</td>
-                <td className="py-2.5 text-right tabular-nums font-medium">{formatCurrency(r.total, currency)}</td>
-                <td className="py-2.5 text-right">
+                <td className="py-3 text-right tabular-nums text-muted-foreground font-[460]">{formatCurrency(r.prev, currency)}</td>
+                <td className="py-3 text-right tabular-nums font-[540]">{formatCurrency(r.total, currency)}</td>
+                <td className="py-3 text-right">
                   <span
                     className={cn(
-                      "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium tabular-nums",
+                      "inline-flex items-center gap-0.5 rounded-lg px-1.5 py-0.5 text-xs font-[600] tabular-nums",
                       up && "bg-destructive/10 text-destructive",
                       down && "bg-success/10 text-success",
-                      !up && !down && "bg-muted/50 text-muted-foreground"
+                      !up && !down && "bg-muted text-muted-foreground"
                     )}
                   >
                     <Icon className="h-3 w-3" />

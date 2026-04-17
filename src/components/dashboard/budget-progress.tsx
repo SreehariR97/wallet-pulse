@@ -21,7 +21,7 @@ export interface BudgetProgressItem {
 function barColor(pct: number) {
   if (pct >= 100) return "bg-destructive";
   if (pct >= 80) return "bg-warning";
-  if (pct >= 50) return "bg-primary";
+  if (pct >= 50) return "bg-accent";
   return "bg-success";
 }
 
@@ -70,10 +70,10 @@ export function BudgetProgressList({
         const color = barColor(pct);
         return (
           <div key={b.id}>
-            <div className="mb-1.5 flex items-center justify-between text-sm">
-              <div className="flex min-w-0 items-center gap-2">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <div className="flex min-w-0 items-center gap-2.5">
                 <span
-                  className="flex h-6 w-6 items-center justify-center rounded-md text-xs"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-xs"
                   style={{
                     backgroundColor: (b.categoryColor ?? "#6366F1") + "22",
                     color: b.categoryColor ?? "#6366F1",
@@ -81,9 +81,9 @@ export function BudgetProgressList({
                 >
                   {b.categoryIcon ?? "🎯"}
                 </span>
-                <span className="truncate font-medium">{b.categoryName ?? "Overall"}</span>
+                <span className="truncate font-[540]">{b.categoryName ?? "Overall"}</span>
               </div>
-              <span className={cn("tabular-nums text-xs font-medium", pct >= 100 ? "text-destructive" : "text-muted-foreground")}>
+              <span className={cn("tabular-nums text-xs font-[500]", pct >= 100 ? "text-destructive" : "text-muted-foreground")}>
                 {formatCurrency(b.spent, currency)} / {formatCurrency(b.amount, currency)}
               </span>
             </div>

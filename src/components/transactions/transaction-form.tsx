@@ -52,12 +52,12 @@ const TYPE_BUTTONS: TypeButton[] = [
 ];
 
 function typeButtonClasses(active: boolean, type: TxType): string {
-  if (!active) return "border-input bg-background/50 text-muted-foreground hover:bg-secondary";
+  if (!active) return "border-input bg-background text-muted-foreground hover:bg-muted";
   if (type === "income" || type === "repayment_received") return "border-success bg-success/15 text-success";
-  if (type === "expense" || type === "repayment_made") return "border-destructive bg-destructive/15 text-destructive";
+  if (type === "expense" || type === "repayment_made") return "border-foreground bg-secondary text-foreground";
   if (type === "loan_given") return "border-warning bg-warning/15 text-warning";
-  if (type === "loan_taken") return "border-primary bg-primary/15 text-primary";
-  return "border-primary bg-primary/15 text-primary";
+  if (type === "loan_taken") return "border-accent bg-accent/50 text-accent-foreground";
+  return "border-accent bg-accent/50 text-accent-foreground";
 }
 
 export function TransactionForm({
@@ -146,9 +146,8 @@ export function TransactionForm({
   }
 
   const amountClass = cn(
-    "text-2xl font-semibold h-14 pl-10",
-    isInflow(values.type) && "text-success",
-    isOutflow(values.type) && "text-destructive"
+    "text-[28px] font-[540] tracking-[-0.015em] h-14 pl-10",
+    isInflow(values.type) && "text-success"
   );
 
   const categoryGroupLabel =
@@ -171,12 +170,12 @@ export function TransactionForm({
               key={type}
               onClick={() => set("type", type)}
               className={cn(
-                "flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors",
+                "flex flex-col items-start rounded-lg border px-3 py-2.5 text-left transition-colors",
                 typeButtonClasses(values.type === type, type)
               )}
             >
-              <span className="text-sm font-medium">{label}</span>
-              <span className="text-[11px] opacity-80">{subtitle}</span>
+              <span className="text-sm font-[540]">{label}</span>
+              <span className="text-[11px] font-[460] opacity-80">{subtitle}</span>
             </button>
           ))}
         </div>
@@ -201,7 +200,7 @@ export function TransactionForm({
             placeholder="0.00"
           />
         </div>
-        {errors.amount && <p className="text-xs text-destructive">{errors.amount[0]}</p>}
+        {errors.amount && <p className="text-xs font-[500] text-destructive">{errors.amount[0]}</p>}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -228,12 +227,12 @@ export function TransactionForm({
               Tip: create a Loan category on the Categories page first.
             </p>
           )}
-          {errors.categoryId && <p className="text-xs text-destructive">{errors.categoryId[0]}</p>}
+          {errors.categoryId && <p className="text-xs font-[500] text-destructive">{errors.categoryId[0]}</p>}
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="date">Date</Label>
           <Input id="date" type="date" required value={values.date} onChange={(e) => set("date", e.target.value)} />
-          {errors.date && <p className="text-xs text-destructive">{errors.date[0]}</p>}
+          {errors.date && <p className="text-xs font-[500] text-destructive">{errors.date[0]}</p>}
         </div>
       </div>
 
@@ -257,7 +256,7 @@ export function TransactionForm({
                     : "Coffee at Blue Bottle"
           }
         />
-        {errors.description && <p className="text-xs text-destructive">{errors.description[0]}</p>}
+        {errors.description && <p className="text-xs font-[500] text-destructive">{errors.description[0]}</p>}
       </div>
 
       <div className="grid gap-1.5">
@@ -294,7 +293,7 @@ export function TransactionForm({
         <p className="text-xs text-muted-foreground">Comma-separated</p>
       </div>
 
-      <div className="rounded-lg border border-border/50 bg-card/40 p-4">
+      <div className="rounded-xl border border-border bg-muted p-4">
         <div className="flex items-center justify-between">
           <div>
             <Label htmlFor="recurring" className="cursor-pointer">

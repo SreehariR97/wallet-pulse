@@ -2,6 +2,14 @@
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { format, parseISO } from "date-fns";
 import { formatCompactCurrency, formatCurrency } from "@/lib/utils";
+import {
+  AXIS_TICK,
+  CHART_DESTRUCTIVE,
+  CHART_SUCCESS,
+  GRID_STROKE,
+  TOOLTIP_BG,
+  TOOLTIP_BORDER,
+} from "./palette";
 
 export interface TrendPoint {
   bucket: string;
@@ -47,22 +55,22 @@ export function TrendChart({
       <Chart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="gradExpense" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="hsl(var(--destructive))" stopOpacity={0.4} />
-            <stop offset="100%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
+            <stop offset="0%" stopColor={CHART_DESTRUCTIVE} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={CHART_DESTRUCTIVE} stopOpacity={0} />
           </linearGradient>
           <linearGradient id="gradIncome" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.4} />
-            <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0} />
+            <stop offset="0%" stopColor={CHART_SUCCESS} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={CHART_SUCCESS} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-        <XAxis dataKey="bucket" tickFormatter={tickFormatter} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickLine={false} axisLine={false} />
-        <YAxis tickFormatter={(v) => formatCompactCurrency(v, currency)} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+        <XAxis dataKey="bucket" tickFormatter={tickFormatter} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} />
+        <YAxis tickFormatter={(v) => formatCompactCurrency(v, currency)} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
         <Tooltip
           contentStyle={{
-            background: "hsl(var(--popover))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "var(--radius)",
+            background: TOOLTIP_BG,
+            border: `1px solid ${TOOLTIP_BORDER}`,
+            borderRadius: "0.75rem",
             fontSize: 12,
           }}
           labelFormatter={(v) => tickFormatter(String(v))}
@@ -70,15 +78,31 @@ export function TrendChart({
         />
         {mode === "line" ? (
           <>
-            {showIncome && <Line type="monotone" dataKey="income" stroke="hsl(var(--success))" strokeWidth={2} dot={false} />}
-            <Line type="monotone" dataKey="expense" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} />
+            {showIncome && (
+              <Line
+                type="monotone"
+                dataKey="income"
+                stroke={CHART_SUCCESS}
+                strokeWidth={2.25}
+                dot={{ r: 2.5, fill: CHART_SUCCESS, strokeWidth: 0 }}
+                activeDot={{ r: 4 }}
+              />
+            )}
+            <Line
+              type="monotone"
+              dataKey="expense"
+              stroke={CHART_DESTRUCTIVE}
+              strokeWidth={2.25}
+              dot={{ r: 2.5, fill: CHART_DESTRUCTIVE, strokeWidth: 0 }}
+              activeDot={{ r: 4 }}
+            />
           </>
         ) : (
           <>
             {showIncome && (
-              <Area type="monotone" dataKey="income" stroke="hsl(var(--success))" strokeWidth={2} fill="url(#gradIncome)" />
+              <Area type="monotone" dataKey="income" stroke={CHART_SUCCESS} strokeWidth={2.25} fill="url(#gradIncome)" />
             )}
-            <Area type="monotone" dataKey="expense" stroke="hsl(var(--destructive))" strokeWidth={2} fill="url(#gradExpense)" />
+            <Area type="monotone" dataKey="expense" stroke={CHART_DESTRUCTIVE} strokeWidth={2.25} fill="url(#gradExpense)" />
           </>
         )}
       </Chart>

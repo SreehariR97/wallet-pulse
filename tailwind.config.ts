@@ -7,8 +7,12 @@ const config: Config = {
     container: { center: true, padding: "2rem", screens: { "2xl": "1400px" } },
     extend: {
       fontFamily: {
-        sans: ["var(--font-jakarta)", "system-ui", "sans-serif"],
-        heading: ["var(--font-jakarta)", "system-ui", "sans-serif"],
+        sans: ["var(--font-inter-tight)", "system-ui", "sans-serif"],
+        heading: ["var(--font-inter-tight)", "system-ui", "sans-serif"],
+      },
+      fontWeight: {
+        "460": "460",
+        "540": "540",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -16,6 +20,7 @@ const config: Config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        link: "hsl(var(--link))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
@@ -52,11 +57,18 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        chart: {
+          "1": "hsl(var(--chart-1))",
+          "2": "hsl(var(--chart-2))",
+          "3": "hsl(var(--chart-3))",
+          "4": "hsl(var(--chart-4))",
+          "5": "hsl(var(--chart-5))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        md: "0.5rem",
+        sm: "0.5rem",
       },
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
