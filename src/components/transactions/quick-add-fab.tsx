@@ -21,13 +21,14 @@ import {
 } from "@/components/ui/dialog";
 import { TransactionForm } from "./transaction-form";
 import { PayCardDialog } from "@/components/credit-cards/pay-card-dialog";
+import { RemittanceForm } from "@/components/remittances/remittance-form";
 import { cn } from "@/lib/utils";
 import type { TxType } from "@/types";
 
 type QuickAction =
   | { kind: "tx"; type: TxType }
-  | { kind: "payCard" };
-// "Send money" (remittance) action will slot in here in Stage 4.3.
+  | { kind: "payCard" }
+  | { kind: "sendMoney" };
 
 export function QuickAddFab({ currency }: { currency: string }) {
   const router = useRouter();
@@ -36,6 +37,7 @@ export function QuickAddFab({ currency }: { currency: string }) {
   const txInitial = action?.kind === "tx" ? { type: action.type } : undefined;
   const txOpen = action?.kind === "tx";
   const payOpen = action?.kind === "payCard";
+  const sendMoneyOpen = action?.kind === "sendMoney";
 
   function close() {
     setAction(null);
@@ -95,7 +97,9 @@ export function QuickAddFab({ currency }: { currency: string }) {
                 <DropdownMenuItem onSelect={() => setAction({ kind: "payCard" })}>
                   Pay card
                 </DropdownMenuItem>
-                {/* "Send money" (remittance) lands here in Stage 4.3. */}
+                <DropdownMenuItem onSelect={() => setAction({ kind: "sendMoney" })}>
+                  Send money
+                </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuPortal>
           </DropdownMenuSub>
@@ -122,6 +126,13 @@ export function QuickAddFab({ currency }: { currency: string }) {
         open={payOpen}
         onOpenChange={(o) => !o && setAction(null)}
         currency={currency}
+        onSaved={close}
+      />
+
+      <RemittanceForm
+        open={sendMoneyOpen}
+        onOpenChange={(o) => !o && setAction(null)}
+        initial={null}
         onSaved={close}
       />
     </>

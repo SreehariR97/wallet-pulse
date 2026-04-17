@@ -31,6 +31,24 @@ export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
+/**
+ * Render an FX rate without showing sloppy trailing zeros. If the value
+ * rounds losslessly to 2 decimals (e.g. `83.120000`), display as `83.12`.
+ * Otherwise show up to 6 decimals (the column's storage precision) with
+ * trailing zeros stripped (e.g. `83.123456` stays full, `83.100000` shows
+ * as `83.10` because 2dp is already lossless).
+ *
+ * Input is the Number cast the API does when returning numeric() strings
+ * — not the raw string from pg. Handles float-drift artifacts like
+ * 83.129999999999999 by letting toFixed round them away.
+ */
+export function formatFxRate(n: number): string {
+  const fixed2 = n.toFixed(2);
+  const fixed6 = n.toFixed(6);
+  if (Number(fixed2) === Number(fixed6)) return fixed2;
+  return fixed6.replace(/\.?0+$/, "");
+}
+
 export function percentChange(current: number, previous: number): number {
   if (previous === 0) return current === 0 ? 0 : 100;
   return ((current - previous) / Math.abs(previous)) * 100;

@@ -163,6 +163,8 @@ src/
 │       ├── categories/       # CRUD
 │       ├── budgets/          # CRUD
 │       ├── analytics/        # summary, trends, category-breakdown, payment-methods
+│       ├── credit-cards/     # cards + cycle + pay shortcut
+│       ├── remittances/      # list, stats, create (transactional)
 │       ├── export/           # CSV + JSON
 │       ├── import/           # CSV ingest with column mapping
 │       └── user/             # profile + password update
@@ -173,6 +175,8 @@ src/
 │   ├── charts/               # trend, donut, bar, heatmap, income-vs-expense
 │   ├── analytics/            # analytics view + MoM table
 │   ├── budgets/              # budgets view + dialog
+│   ├── credit-cards/         # list, detail, tile, form, pay dialog, cycle picker
+│   ├── remittances/          # list, form, stats, service badge
 │   ├── categories/           # categories view
 │   ├── transactions/         # table, form, filters, quick-add FAB
 │   └── settings/             # settings view + import dialog
