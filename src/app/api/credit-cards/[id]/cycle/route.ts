@@ -75,7 +75,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     .from(transactions)
     .where(and(...baseFilters));
 
-  // Transactions in the window, newest first.
+  // Transactions in the window, newest first. Select shape matches
+  // TransactionListItem so the shared TransactionTable can render these
+  // rows without any adapter layer.
   const rows = await db
     .select({
       id: transactions.id,
@@ -86,6 +88,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       notes: transactions.notes,
       date: transactions.date,
       paymentMethod: transactions.paymentMethod,
+      isRecurring: transactions.isRecurring,
+      recurringFrequency: transactions.recurringFrequency,
+      tags: transactions.tags,
       categoryId: transactions.categoryId,
       categoryName: categories.name,
       categoryIcon: categories.icon,

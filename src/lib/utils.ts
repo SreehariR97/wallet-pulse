@@ -42,6 +42,29 @@ export function dateFromSeconds(v: number | Date | string): Date {
   return new Date(v * 1000);
 }
 
+/**
+ * Format an ISO timestamp as a calendar day in UTC. Used for statement
+ * cycle boundaries: the server returns midnight-UTC / 23:59-UTC markers,
+ * which get rendered as the "wrong" day for users east/west of UTC when
+ * formatted via local time. Keeping the calendar day in UTC preserves the
+ * intended semantic boundary across timezones.
+ */
+const UTC_DAY_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+const UTC_DAY_YEAR_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+export function formatUtcDay(iso: string | Date, withYear = false): string {
+  const d = iso instanceof Date ? iso : new Date(iso);
+  return (withYear ? UTC_DAY_YEAR_FMT : UTC_DAY_FMT).format(d);
+}
+
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
   credit_card: "Credit Card",

@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { format } from "date-fns";
 import { Archive, MoreHorizontal, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -12,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatUtcDay } from "@/lib/utils";
 
 export interface CreditCardSummary {
   id: string;
@@ -50,8 +49,6 @@ export function CardTile({
   onUnarchive?: (c: CreditCardSummary) => void;
 }) {
   const util = Math.max(0, Math.min(100, card.utilizationPercent));
-  const cycleEnd = new Date(card.currentCycleEnd);
-  const nextDue = new Date(card.nextDueDate);
 
   return (
     <Card
@@ -154,7 +151,7 @@ export function CardTile({
                 Cycle closes
               </div>
               <div className="mt-0.5 text-[13px] font-[540] tabular-nums">
-                {format(cycleEnd, "MMM d")}
+                {formatUtcDay(card.currentCycleEnd)}
               </div>
             </div>
             <div>
@@ -162,7 +159,7 @@ export function CardTile({
                 Due
               </div>
               <div className="mt-0.5 text-[13px] font-[540] tabular-nums">
-                {format(nextDue, "MMM d")}
+                {formatUtcDay(card.nextDueDate)}
                 {card.minPaymentEstimate > 0 && (
                   <span className="ml-1.5 text-[11px] font-[460] text-muted-foreground">
                     · min {formatCurrency(card.minPaymentEstimate, currency)}
