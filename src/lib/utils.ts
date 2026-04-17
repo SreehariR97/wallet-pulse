@@ -133,9 +133,12 @@ export function isLoanType(type: string): boolean {
  * - expense / loan_given / repayment_made map to "expense" — BUT loans get their own category type
  *
  * All four loan-related transaction types use the "loan" category type.
+ * Transfer transactions (card payments, remittances) use the "transfer"
+ * category type — seeded as system-only categories.
  */
-export function categoryTypeForTransactionType(type: string): "expense" | "income" | "loan" {
+export function categoryTypeForTransactionType(type: string): "expense" | "income" | "loan" | "transfer" {
   if (LOAN_TYPES.has(type)) return "loan";
+  if (type === "transfer") return "transfer";
   if (type === "income") return "income";
   return "expense";
 }

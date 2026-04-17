@@ -115,14 +115,18 @@ export function TransactionForm({
   );
 
   React.useEffect(() => {
-    // If the current category no longer matches the required type (or none picked), default-select one.
+    // Wait until the categories store has loaded before auto-selecting —
+    // otherwise the first effect pass (empty items) wipes the categoryId
+    // handed in as `initial`, and the second pass picks the first-sorted
+    // category of the required type instead of the one the user set.
+    if (!loaded) return;
     const current = categories.find((c) => c.id === values.categoryId);
     if (!current || current.type !== requiredCategoryType) {
       const first = filteredCategories[0];
       if (first) setValues((v) => ({ ...v, categoryId: first.id }));
       else if (values.categoryId) setValues((v) => ({ ...v, categoryId: "" }));
     }
-  }, [values.type, requiredCategoryType, categories, filteredCategories, values.categoryId]);
+  }, [loaded, values.type, requiredCategoryType, categories, filteredCategories, values.categoryId]);
 
   function set<K extends keyof TransactionFormValues>(k: K, v: TransactionFormValues[K]) {
     setValues((p) => {

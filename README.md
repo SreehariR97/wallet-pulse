@@ -23,6 +23,8 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on mo
 - **Rich analytics** — trend charts, category breakdowns, spending heatmap, month-over-month comparison, payment-method distribution.
 - **Budgets with alerts** — per-category or overall, with progress bars that flip to warning/destructive when you exceed them.
 - **Loan tracking** — first-class transaction types for money lent, borrowed, and repaid, so loans don't pollute your income/expense totals.
+- **Credit cards with statement cycles** — multiple cards, computed balance and utilization, current/previous cycle breakdown by category, next-due-date tracking, and a one-click "Pay card" shortcut.
+- **International remittances** — USD→INR (or any corridor) with exchange rate and fee stored at full precision; stats cards break down total sent MTD, fees YTD, and avg rate by service so you can audit which provider gives you the best deal.
 - **CSV import / export** with column mapping, plus JSON backup for full portability.
 - **Recurring transactions** flagged with a badge so you can see your fixed costs at a glance.
 - **Superhuman-inspired UI** — light-default palette of Mysteria-purple hero accents, Lavender Glow highlights, Warm Cream buttons, Charcoal Ink text, and Parchment borders, set in Inter Tight variable font with non-standard 460/540 weight stops. Dark theme via next-themes. Responsive down to 375px with a mobile nav and quick-add FAB.
@@ -141,6 +143,8 @@ The demo user ships with a handful of transactions and two budgets (Groceries $4
 | `pnpm start` | Start the built app |
 | `pnpm lint` | Run ESLint |
 | `pnpm type-check` | `tsc --noEmit` across the whole codebase |
+| `pnpm test` | Vitest watch mode for dev |
+| `pnpm test:run` | Run Vitest once (CI / pre-commit) |
 | `pnpm db:generate` | Generate a new Drizzle migration from schema changes |
 | `pnpm db:migrate` | Apply pending migrations to your Postgres database |
 | `pnpm db:push` | Push the schema directly without generating a migration (dev-only) |
@@ -284,12 +288,16 @@ Helpers live in `src/lib/api.ts`.
 
 ```
 users
- ├─< categories        (per-user, type = expense | income | loan)
- ├─< transactions      (type = expense | income | loan_given | loan_taken | repayment_made | repayment_received)
- └─< budgets           (overall or per-category, period = weekly | monthly | yearly)
+ ├─< categories        (per-user, type = expense | income | loan | transfer)
+ ├─< transactions      (type = expense | income | transfer | loan_given | loan_taken | repayment_made | repayment_received;
+ │                      optional credit_card_id FK for card-paid expenses and card repayments)
+ ├─< budgets           (overall or per-category, period = weekly | monthly | yearly)
+ ├─< credit_cards      (per-user, statement_day + payment_due_day as day-of-month ints, soft-archived via is_active)
+ └─< remittances       (1:1 with a `type=transfer` transaction; stores fx_rate numeric(12,6), fee numeric(12,4),
+                        service enum, recipient_note — full-precision audit trail for international transfers)
 ```
 
-Timestamps use `timestamp with time zone` (indexable, timezone-aware). Amounts are `double precision`. The schema lives in `src/lib/db/schema.ts`.
+Timestamps use `timestamp with time zone` (indexable, timezone-aware). Amounts are `double precision` by default; `remittances.fx_rate` and `remittances.fee` use `numeric()` for exact decimal precision. `transactions.credit_card_id` is nullable and cascades to `SET NULL` on card delete, so archiving/deleting a card never orphans history. `remittances.transaction_id` is `UNIQUE` + `ON DELETE CASCADE`, making the 1:1 relationship structural. The schema lives in `src/lib/db/schema.ts`.
 
 ---
 
@@ -340,7 +348,31 @@ For a fully-loaded local playground with realistic transactions, run:
 pnpm db:bootstrap-dev
 ```
 
-This creates the demo account (`demo@walletpulse.test` / `demo123`) plus a sample `sree@gmail.com` user, seeds default categories, and loads ~40 sample transactions covering every transaction type (income, expense, loans, repayments). It's idempotent — re-running won't duplicate data.
+This creates the demo account (`demo@walletpulse.test` / `demo123`) plus a sample `sree@gmail.com` user, seeds default categories, and loads sample data covering every transaction type (income, expense, loans, repayments) plus two credit cards with card-paid transactions and a repayment, plus three remittances across two services (including one recurring monthly). It's idempotent — re-running won't duplicate data.
+
+### Applying feature migrations to existing production DB
+
+When a feature ships that adds new schema AND depends on seeded rows for existing users (the credit-cards + remittances feature is the first of these), production needs two steps, both one-shot:
+
+1. **Migrate the schema.** From your local machine with production `DATABASE_URL` exported:
+
+   ```bash
+   DATABASE_URL="postgres://..." pnpm db:migrate
+   ```
+
+   This applies any pending `drizzle/*.sql` files via the standard Drizzle migrator. Safe to re-run — `drizzle-kit` tracks applied migrations in an internal `__drizzle_migrations` table.
+
+2. **Backfill seeded rows for pre-existing users.** For credit-cards + remittances specifically, users who registered before the feature shipped don't have the two new transfer-type default categories. Run once:
+
+   ```bash
+   DATABASE_URL="postgres://..." pnpm tsx scripts/backfill-transfer-categories.ts
+   ```
+
+   Idempotent — every row is gated by a `(userId, name)` existence check. New users created after this deploy pick up the categories automatically via the existing `seedDefaultCategoriesForUser()` call in registration.
+
+**No new environment variables** are required for the credit-cards + remittances feature. The existing `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `AUTH_TRUST_HOST` set cover everything.
+
+Future feature PRs that need the same treatment should drop a similar `scripts/backfill-<feature>.ts` and add a bullet here + an entry in [FOLLOWUPS.md](FOLLOWUPS.md) under **Deployment notes**.
 
 ---
 

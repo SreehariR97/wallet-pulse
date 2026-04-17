@@ -28,9 +28,12 @@ import {
   categories,
   transactions,
   budgets,
+  creditCards,
+  remittances,
   type Category,
+  type CreditCard,
 } from "../src/lib/db/schema";
-import { DEFAULT_CATEGORIES } from "../src/lib/db/defaults";
+import { DEFAULT_CATEGORIES, TRANSFER_CATEGORY_NAMES } from "../src/lib/db/defaults";
 
 type PaymentMethod =
   | "cash"
@@ -243,6 +246,253 @@ async function seedTransactions(
   return { inserted, skipped: "" };
 }
 
+// ---- Credit cards + card-tagged transactions + card payments ----
+
+const CARD_DEFS: Array<{
+  name: string;
+  issuer: string;
+  last4: string;
+  creditLimit: number;
+  statementDay: number;
+  paymentDueDay: number;
+}> = [
+  {
+    name: "Chase Sapphire Preferred",
+    issuer: "Chase",
+    last4: "4521",
+    creditLimit: 12000,
+    statementDay: 14,
+    paymentDueDay: 9,
+  },
+  {
+    name: "Amex Gold",
+    issuer: "American Express",
+    last4: "1007",
+    creditLimit: 25000,
+    statementDay: 28,
+    paymentDueDay: 25,
+  },
+];
+
+async function ensureCreditCardsForUser(userId: string): Promise<CreditCard[]> {
+  const existing = await db.select().from(creditCards).where(eq(creditCards.userId, userId));
+  const byName = new Set(existing.map((c) => c.name.toLowerCase()));
+  const missing = CARD_DEFS.filter((d) => !byName.has(d.name.toLowerCase()));
+  if (missing.length > 0) {
+    await db.insert(creditCards).values(
+      missing.map((c, i) => ({
+        id: randomUUID(),
+        userId,
+        name: c.name,
+        issuer: c.issuer,
+        last4: c.last4,
+        creditLimit: c.creditLimit,
+        statementDay: c.statementDay,
+        paymentDueDay: c.paymentDueDay,
+        minimumPaymentPercent: 2,
+        sortOrder: existing.length + i,
+      })),
+    );
+    return db.select().from(creditCards).where(eq(creditCards.userId, userId));
+  }
+  return existing;
+}
+
+type CardSeedRow = {
+  date: string;
+  type: "expense" | "transfer";
+  amount: number;
+  /** Category name for expense; for transfer it's "Credit Card Payment". */
+  category?: string;
+  description: string;
+  notes?: string;
+  paymentMethod: PaymentMethod;
+  /** "chase" or "amex" — mapped to the corresponding seeded card. */
+  card: "chase" | "amex";
+};
+
+const CARD_TXNS: CardSeedRow[] = [
+  // Chase activity
+  { date: "2026-04-10", type: "expense", amount: 412.0, category: "Travel", description: "Flight to SFO", paymentMethod: "credit_card", card: "chase" },
+  { date: "2026-04-12", type: "expense", amount: 148.25, category: "Groceries", description: "Trader Joe's", paymentMethod: "credit_card", card: "chase" },
+  // 1 repayment (transfer) to Chase
+  { date: "2026-04-05", type: "transfer", amount: 300.0, description: "Partial payment to Chase", paymentMethod: "bank_transfer", card: "chase" },
+  // Amex activity
+  { date: "2026-04-09", type: "expense", amount: 235.0, category: "Dining Out", description: "Omakase", paymentMethod: "credit_card", card: "amex" },
+  { date: "2026-04-14", type: "expense", amount: 61.2, category: "Groceries", description: "Whole Foods", paymentMethod: "credit_card", card: "amex" },
+  { date: "2026-04-13", type: "expense", amount: 89.3, category: "Shopping", description: "Bookshop", paymentMethod: "credit_card", card: "amex" },
+];
+
+async function seedCardTransactions(
+  userId: string,
+  currency: string,
+  cards: CreditCard[],
+  cats: Category[],
+  marker: string,
+): Promise<{ inserted: number; skipped: string }> {
+  // Idempotency marker — one extra marker tx per user, keyed by notes.
+  const [markerRow] = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), eq(transactions.notes, marker)))
+    .limit(1);
+  if (markerRow) return { inserted: 0, skipped: "already seeded" };
+
+  const chase = cards.find((c) => c.name === "Chase Sapphire Preferred");
+  const amex = cards.find((c) => c.name === "Amex Gold");
+  if (!chase || !amex) throw new Error("Expected both seeded cards for user " + userId);
+
+  const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c]));
+  const ccPayCat = catByName.get(TRANSFER_CATEGORY_NAMES.creditCardPayment.toLowerCase());
+  if (!ccPayCat) throw new Error("Missing 'Credit Card Payment' category for user " + userId);
+
+  const firstCat = cats[0];
+  await db.insert(transactions).values({
+    id: randomUUID(),
+    userId,
+    categoryId: firstCat.id,
+    type: "expense",
+    amount: 0.01,
+    currency,
+    description: "(seed marker — safe to delete)",
+    notes: marker,
+    date: new Date("2026-01-01T00:00:00.000Z"),
+    paymentMethod: "other",
+  });
+
+  let inserted = 0;
+  for (const r of CARD_TXNS) {
+    const cardRow = r.card === "chase" ? chase : amex;
+    const catRow =
+      r.type === "transfer"
+        ? ccPayCat
+        : catByName.get((r.category ?? "").toLowerCase());
+    if (!catRow) {
+      console.warn(`  SKIP: no category "${r.category}" for "${r.description}"`);
+      continue;
+    }
+    await db.insert(transactions).values({
+      id: randomUUID(),
+      userId,
+      categoryId: catRow.id,
+      type: r.type,
+      amount: r.amount,
+      currency,
+      description: r.description,
+      notes: r.notes ?? null,
+      date: new Date(r.date + "T12:00:00.000Z"),
+      paymentMethod: r.paymentMethod,
+      creditCardId: cardRow.id,
+    });
+    inserted++;
+  }
+  return { inserted, skipped: "" };
+}
+
+// ---- Remittances ----
+
+type RemittanceSeedRow = {
+  date: string;
+  amount: number;
+  fromCurrency: string;
+  toCurrency: string;
+  fxRate: string;
+  fee: string;
+  service: "wise" | "remitly" | "western_union" | "bank_wire" | "other";
+  description: string;
+  recipientNote: string;
+  isRecurring?: boolean;
+  recurringFrequency?: "monthly" | "weekly" | "yearly";
+};
+
+const REMITTANCE_SEEDS: RemittanceSeedRow[] = [
+  {
+    date: "2026-04-03",
+    amount: 800,
+    fromCurrency: "USD",
+    toCurrency: "INR",
+    fxRate: "83.12",
+    fee: "4.99",
+    service: "wise",
+    description: "April support home",
+    recipientNote: "Mom",
+    isRecurring: true,
+    recurringFrequency: "monthly",
+  },
+  {
+    date: "2026-04-09",
+    amount: 350,
+    fromCurrency: "USD",
+    toCurrency: "INR",
+    fxRate: "83.123456",
+    fee: "2.99",
+    service: "wise",
+    description: "Dad medical",
+    recipientNote: "Dad",
+  },
+  {
+    date: "2026-03-28",
+    amount: 1200,
+    fromCurrency: "USD",
+    toCurrency: "INR",
+    fxRate: "82.85",
+    fee: "7.50",
+    service: "remitly",
+    description: "Transfer to my ICICI",
+    recipientNote: "Self - ICICI",
+  },
+];
+
+async function seedRemittances(
+  userId: string,
+  cats: Category[],
+): Promise<{ inserted: number; skipped: string }> {
+  const [existing] = await db
+    .select({ id: remittances.id })
+    .from(remittances)
+    .where(eq(remittances.userId, userId))
+    .limit(1);
+  if (existing) return { inserted: 0, skipped: "already seeded" };
+
+  const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c]));
+  const intlCat = catByName.get(TRANSFER_CATEGORY_NAMES.internationalTransfer.toLowerCase());
+  if (!intlCat) throw new Error("Missing 'International Transfer' category for user " + userId);
+
+  let inserted = 0;
+  for (const r of REMITTANCE_SEEDS) {
+    const txId = randomUUID();
+    await db.transaction(async (trx) => {
+      await trx.insert(transactions).values({
+        id: txId,
+        userId,
+        categoryId: intlCat.id,
+        type: "transfer",
+        amount: r.amount,
+        currency: r.fromCurrency,
+        description: r.description,
+        notes: null,
+        date: new Date(r.date + "T12:00:00.000Z"),
+        paymentMethod: "bank_transfer",
+        isRecurring: r.isRecurring ?? false,
+        recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
+      });
+      await trx.insert(remittances).values({
+        id: randomUUID(),
+        transactionId: txId,
+        userId,
+        fromCurrency: r.fromCurrency,
+        toCurrency: r.toCurrency,
+        fxRate: r.fxRate,
+        fee: r.fee,
+        service: r.service,
+        recipientNote: r.recipientNote,
+      });
+    });
+    inserted++;
+  }
+  return { inserted, skipped: "" };
+}
+
 async function seedBudgetsForDemo(userId: string, cats: Category[]) {
   const existing = await db.select({ id: budgets.id }).from(budgets).where(eq(budgets.userId, userId));
   if (existing.length > 0) return 0;
@@ -292,6 +542,12 @@ async function main() {
   console.log(`           transactions: ${demoTx.inserted > 0 ? `${demoTx.inserted} inserted` : demoTx.skipped}`);
   const demoBg = await seedBudgetsForDemo(demo.id, demoCats);
   console.log(`           budgets: ${demoBg > 0 ? `${demoBg} inserted` : "already set"}`);
+  const demoCards = await ensureCreditCardsForUser(demo.id);
+  console.log(`           credit cards: ${demoCards.length}`);
+  const demoCard = await seedCardTransactions(demo.id, "USD", demoCards, demoCats, "[bootstrap:demo-cards-v1]");
+  console.log(`           card transactions: ${demoCard.inserted > 0 ? `${demoCard.inserted} inserted` : demoCard.skipped}`);
+  const demoRem = await seedRemittances(demo.id, demoCats);
+  console.log(`           remittances: ${demoRem.inserted > 0 ? `${demoRem.inserted} inserted` : demoRem.skipped}`);
 
   // --- Sree user ---
   const sree = await ensureUser({
@@ -305,6 +561,12 @@ async function main() {
   console.log(`           categories: ${sreeCats.length}`);
   const sreeTx = await seedTransactions(sree.id, "USD", SREE_TXNS, "[bootstrap:sree-v1]");
   console.log(`           transactions: ${sreeTx.inserted > 0 ? `${sreeTx.inserted} inserted` : sreeTx.skipped}`);
+  const sreeCards = await ensureCreditCardsForUser(sree.id);
+  console.log(`           credit cards: ${sreeCards.length}`);
+  const sreeCard = await seedCardTransactions(sree.id, "USD", sreeCards, sreeCats, "[bootstrap:sree-cards-v1]");
+  console.log(`           card transactions: ${sreeCard.inserted > 0 ? `${sreeCard.inserted} inserted` : sreeCard.skipped}`);
+  const sreeRem = await seedRemittances(sree.id, sreeCats);
+  console.log(`           remittances: ${sreeRem.inserted > 0 ? `${sreeRem.inserted} inserted` : sreeRem.skipped}`);
 
   console.log("\n  Done. Log in at http://localhost:3000/login with either account (password: demo123)\n");
 }
