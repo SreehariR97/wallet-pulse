@@ -19,6 +19,7 @@ import { categories, creditCards, transactions } from "@/lib/db/schema";
 import { cycleQuerySchema } from "@/lib/validations/credit-card";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { getStatementCycle } from "@/lib/credit-cards";
+import type { CreditCardCycleDTO, TransactionListItem } from "@/types";
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireUser();
@@ -44,8 +45,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const baseFilters = [
     eq(transactions.userId, auth.userId),
     eq(transactions.creditCardId, card.id),
-    gte(transactions.date, win.start),
-    lte(transactions.date, win.end),
+    // Cycle boundaries are midnight-UTC Date markers; extract UTC civil day
+    // to match how transactions.date is stored.
+    gte(transactions.date, win.start.toISOString().slice(0, 10)),
+    lte(transactions.date, win.end.toISOString().slice(0, 10)),
   ];
 
   // Category breakdown — expenses only.
@@ -102,13 +105,32 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     .where(and(...baseFilters))
     .orderBy(desc(transactions.date));
 
+  const txItems: TransactionListItem[] = rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    amount: Number(r.amount),
+    currency: r.currency,
+    description: r.description,
+    notes: r.notes,
+    date: r.date,
+    paymentMethod: r.paymentMethod,
+    isRecurring: r.isRecurring,
+    recurringFrequency: r.recurringFrequency,
+    tags: r.tags,
+    categoryId: r.categoryId,
+    categoryName: r.categoryName,
+    categoryIcon: r.categoryIcon,
+    categoryColor: r.categoryColor,
+    createdAt: r.createdAt.toISOString(),
+  }));
+
   return ok({
     card: {
       id: card.id,
       name: card.name,
       issuer: card.issuer,
       last4: card.last4,
-      creditLimit: card.creditLimit,
+      creditLimit: Number(card.creditLimit),
       statementDay: card.statementDay,
       paymentDueDay: card.paymentDueDay,
     },
@@ -119,10 +141,13 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     totalPayments: Number(totals?.totalPayments ?? 0),
     count: Number(totals?.count ?? 0),
     categoryBreakdown: breakdown.map((b) => ({
-      ...b,
+      categoryId: b.categoryId,
+      name: b.name,
+      icon: b.icon,
+      color: b.color,
       total: Number(b.total),
       count: Number(b.count),
     })),
-    transactions: rows,
-  });
+    transactions: txItems,
+  } satisfies CreditCardCycleDTO);
 }

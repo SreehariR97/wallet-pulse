@@ -4,7 +4,12 @@ export const profileUpdateSchema = z.object({
   name: z.string().min(2).max(64).optional(),
   email: z.string().email().optional(),
   currency: z.string().length(3).optional(),
-  monthlyBudget: z.number().nonnegative().nullable().optional(),
+  monthlyBudget: z
+    .number()
+    .nonnegative()
+    .max(99999999999.99, "Monthly budget exceeds maximum value")
+    .nullable()
+    .optional(),
 });
 
 export const passwordUpdateSchema = z.object({

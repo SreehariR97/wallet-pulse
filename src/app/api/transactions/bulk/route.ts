@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
 import { transactionBulkDeleteSchema } from "@/lib/validations/transaction";
 import { ok, zodFail, requireUser } from "@/lib/api";
+import type { BulkDeletedDTO } from "@/types";
 
 export async function DELETE(req: Request) {
   const auth = await requireUser();
@@ -12,9 +13,10 @@ export async function DELETE(req: Request) {
   const parsed = transactionBulkDeleteSchema.safeParse(body);
   if (!parsed.success) return zodFail(parsed.error);
 
-  await db
+  const deleted = await db
     .delete(transactions)
-    .where(and(eq(transactions.userId, auth.userId), inArray(transactions.id, parsed.data.ids)));
+    .where(and(eq(transactions.userId, auth.userId), inArray(transactions.id, parsed.data.ids)))
+    .returning();
 
-  return ok({ deleted: parsed.data.ids.length });
+  return ok({ deleted: deleted.length } satisfies BulkDeletedDTO);
 }

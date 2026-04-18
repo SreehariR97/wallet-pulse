@@ -5,6 +5,25 @@ import { creditCards, transactions } from "@/lib/db/schema";
 import { creditCardCreateSchema } from "@/lib/validations/credit-card";
 import { ok, zodFail, requireUser } from "@/lib/api";
 import { getStatementCycle, getNextDueDate } from "@/lib/credit-cards";
+import type { CreditCardDTO, CreditCardListItemDTO } from "@/types";
+
+function toCreditCardDTO(c: typeof creditCards.$inferSelect): CreditCardDTO {
+  return {
+    id: c.id,
+    userId: c.userId,
+    name: c.name,
+    issuer: c.issuer,
+    last4: c.last4,
+    creditLimit: Number(c.creditLimit),
+    statementDay: c.statementDay,
+    paymentDueDay: c.paymentDueDay,
+    minimumPaymentPercent: c.minimumPaymentPercent,
+    isActive: c.isActive,
+    sortOrder: c.sortOrder,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
+}
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -62,23 +81,27 @@ export async function GET(req: Request) {
             eq(transactions.userId, auth.userId),
             eq(transactions.creditCardId, c.id),
             eq(transactions.type, "expense"),
-            gte(transactions.date, win.start),
-            lte(transactions.date, win.end),
+            // Cycle boundaries are Dates constructed as midnight-UTC markers
+            // (see lib/credit-cards.ts). `toISOString().slice(0,10)` extracts
+            // the UTC civil day, which matches how transactions.date is stored.
+            gte(transactions.date, win.start.toISOString().slice(0, 10)),
+            lte(transactions.date, win.end.toISOString().slice(0, 10)),
           ),
         )
         .then((r) => Number(r[0]?.total ?? 0));
     }),
   );
 
-  const enriched = cards.map((c, i) => {
+  const enriched: CreditCardListItemDTO[] = cards.map((c, i) => {
     const b = balanceByCard.get(c.id) ?? { totalExpense: 0, totalPayments: 0 };
     const balance = b.totalExpense - b.totalPayments;
-    const utilizationPercent = c.creditLimit > 0 ? (balance / c.creditLimit) * 100 : 0;
+    const base = toCreditCardDTO(c);
+    const utilizationPercent = base.creditLimit > 0 ? (balance / base.creditLimit) * 100 : 0;
     const win = cycleWindows[i];
     const nextDue = getNextDueDate(now, c.paymentDueDay);
     const minPaymentEstimate = Math.max(0, balance) * (c.minimumPaymentPercent / 100);
     return {
-      ...c,
+      ...base,
       balance,
       utilizationPercent,
       currentCycleStart: win.start.toISOString(),
@@ -89,7 +112,7 @@ export async function GET(req: Request) {
     };
   });
 
-  return ok(enriched);
+  return ok(enriched satisfies CreditCardListItemDTO[]);
 }
 
 export async function POST(req: Request) {
@@ -102,19 +125,20 @@ export async function POST(req: Request) {
   const c = parsed.data;
 
   const id = randomUUID();
-  await db.insert(creditCards).values({
-    id,
-    userId: auth.userId,
-    name: c.name,
-    issuer: c.issuer,
-    last4: c.last4 ?? null,
-    creditLimit: c.creditLimit,
-    statementDay: c.statementDay,
-    paymentDueDay: c.paymentDueDay,
-    minimumPaymentPercent: c.minimumPaymentPercent,
-    sortOrder: c.sortOrder,
-  });
-
-  const [row] = await db.select().from(creditCards).where(eq(creditCards.id, id)).limit(1);
-  return ok(row, { created: true });
+  const [row] = await db
+    .insert(creditCards)
+    .values({
+      id,
+      userId: auth.userId,
+      name: c.name,
+      issuer: c.issuer,
+      last4: c.last4 ?? null,
+      creditLimit: String(c.creditLimit),
+      statementDay: c.statementDay,
+      paymentDueDay: c.paymentDueDay,
+      minimumPaymentPercent: c.minimumPaymentPercent,
+      sortOrder: c.sortOrder,
+    })
+    .returning();
+  return ok(toCreditCardDTO(row) satisfies CreditCardDTO, { created: true });
 }

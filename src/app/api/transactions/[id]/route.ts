@@ -3,6 +3,33 @@ import { db } from "@/lib/db";
 import { transactions, categories, creditCards, remittances } from "@/lib/db/schema";
 import { transactionUpdateSchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import type { TransactionDTO, DeletedIdDTO } from "@/types";
+
+type TransactionPatch = Partial<
+  Omit<typeof transactions.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">
+>;
+
+function toTransactionDTO(t: typeof transactions.$inferSelect): TransactionDTO {
+  return {
+    id: t.id,
+    userId: t.userId,
+    categoryId: t.categoryId,
+    type: t.type,
+    amount: Number(t.amount),
+    currency: t.currency,
+    description: t.description,
+    notes: t.notes,
+    date: t.date,
+    paymentMethod: t.paymentMethod,
+    creditCardId: t.creditCardId,
+    isRecurring: t.isRecurring,
+    recurringFrequency: t.recurringFrequency,
+    tags: t.tags,
+    receiptUrl: t.receiptUrl,
+    createdAt: t.createdAt.toISOString(),
+    updatedAt: t.updatedAt.toISOString(),
+  };
+}
 
 async function assertOwned(id: string, userId: string) {
   const [row] = await db.select().from(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).limit(1);
@@ -14,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if ("error" in auth) return auth.error;
   const row = await assertOwned(params.id, auth.userId);
   if (!row) return fail(404, "Transaction not found");
-  return ok(row);
+  return ok(toTransactionDTO(row) satisfies TransactionDTO);
 }
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
@@ -83,22 +110,21 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     }
   }
 
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  const patch: TransactionPatch = {};
   if (t.type !== undefined) patch.type = t.type;
-  if (t.amount !== undefined) patch.amount = t.amount;
+  if (t.amount !== undefined) patch.amount = String(t.amount);
   if (t.categoryId !== undefined) patch.categoryId = t.categoryId;
   if (t.description !== undefined) patch.description = t.description;
   if (t.notes !== undefined) patch.notes = t.notes;
-  if (t.date !== undefined) patch.date = new Date(t.date + "T12:00:00.000Z");
+  if (t.date !== undefined) patch.date = t.date;
   if (t.paymentMethod !== undefined) patch.paymentMethod = t.paymentMethod;
   if (t.creditCardId !== undefined) patch.creditCardId = t.creditCardId;
   if (t.isRecurring !== undefined) patch.isRecurring = t.isRecurring;
   if (t.recurringFrequency !== undefined) patch.recurringFrequency = t.recurringFrequency;
   if (t.tags !== undefined) patch.tags = t.tags;
 
-  await db.update(transactions).set(patch).where(eq(transactions.id, params.id));
-  const [row] = await db.select().from(transactions).where(eq(transactions.id, params.id)).limit(1);
-  return ok(row);
+  const [row] = await db.update(transactions).set(patch).where(eq(transactions.id, params.id)).returning();
+  return ok(toTransactionDTO(row) satisfies TransactionDTO);
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
@@ -107,5 +133,5 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const existing = await assertOwned(params.id, auth.userId);
   if (!existing) return fail(404, "Transaction not found");
   await db.delete(transactions).where(eq(transactions.id, params.id));
-  return ok({ id: params.id });
+  return ok({ id: params.id } satisfies DeletedIdDTO);
 }

@@ -25,5 +25,12 @@ export default async function SettingsPage() {
 
   if (!row) redirect("/login");
 
-  return <SettingsView initial={row} />;
+  return (
+    <SettingsView
+      initial={{
+        ...row,
+        monthlyBudget: row.monthlyBudget != null ? Number(row.monthlyBudget) : null,
+      }}
+    />
+  );
 }

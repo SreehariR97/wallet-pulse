@@ -6,6 +6,23 @@ import { categories, type Category } from "@/lib/db/schema";
 import { categoryCreateSchema } from "@/lib/validations/category";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { DEFAULT_CATEGORIES } from "@/lib/db/defaults";
+import type { CategoryDTO } from "@/types";
+
+function toCategoryDTO(c: typeof categories.$inferSelect): CategoryDTO {
+  return {
+    id: c.id,
+    userId: c.userId,
+    name: c.name,
+    icon: c.icon,
+    color: c.color,
+    type: c.type,
+    budgetLimit: c.budgetLimit != null ? Number(c.budgetLimit) : null,
+    isDefault: c.isDefault,
+    sortOrder: c.sortOrder,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
+}
 
 /**
  * Seed any default categories that the user doesn't yet have.
@@ -55,11 +72,11 @@ export async function GET() {
         .from(categories)
         .where(eq(categories.userId, auth.userId))
         .orderBy(asc(categories.sortOrder), asc(categories.name));
-      return ok(refreshed);
+      return ok(refreshed.map(toCategoryDTO) satisfies CategoryDTO[]);
     }
   }
 
-  return ok(existing);
+  return ok(existing.map(toCategoryDTO) satisfies CategoryDTO[]);
 }
 
 export async function POST(req: Request) {
@@ -71,7 +88,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return zodFail(parsed.error);
 
   const id = randomUUID();
-  await db
+  const [row] = await db
     .insert(categories)
     .values({
       id,
@@ -80,9 +97,8 @@ export async function POST(req: Request) {
       icon: parsed.data.icon,
       color: parsed.data.color,
       type: parsed.data.type,
-      budgetLimit: parsed.data.budgetLimit ?? null,
-    });
-
-  const [row] = await db.select().from(categories).where(eq(categories.id, id)).limit(1);
-  return NextResponse.json({ data: row }, { status: 201 });
+      budgetLimit: parsed.data.budgetLimit != null ? String(parsed.data.budgetLimit) : null,
+    })
+    .returning();
+  return NextResponse.json({ data: toCategoryDTO(row) satisfies CategoryDTO }, { status: 201 });
 }

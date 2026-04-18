@@ -155,7 +155,7 @@ async function ensureUser(opts: {
     name: opts.name,
     passwordHash,
     currency: opts.currency ?? "USD",
-    monthlyBudget: opts.monthlyBudget ?? null,
+    monthlyBudget: opts.monthlyBudget != null ? String(opts.monthlyBudget) : null,
   });
   return { id, created: true };
 }
@@ -209,11 +209,11 @@ async function seedTransactions(
     userId,
     categoryId: firstCat.id,
     type: "expense",
-    amount: 0.01,
+    amount: "0.01",
     currency,
     description: "(seed marker — safe to delete)",
     notes: marker,
-    date: new Date("2026-01-01T00:00:00.000Z"),
+    date: "2026-01-01",
     paymentMethod: "other",
     isRecurring: false,
     tags: null,
@@ -231,11 +231,11 @@ async function seedTransactions(
       userId,
       categoryId: cat.id,
       type: r.type,
-      amount: r.amount,
+      amount: String(r.amount),
       currency,
       description: r.description,
       notes: r.notes ?? null,
-      date: new Date(r.date + "T12:00:00.000Z"),
+      date: r.date,
       paymentMethod: r.paymentMethod,
       isRecurring: r.isRecurring ?? false,
       recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
@@ -286,7 +286,7 @@ async function ensureCreditCardsForUser(userId: string): Promise<CreditCard[]> {
         name: c.name,
         issuer: c.issuer,
         last4: c.last4,
-        creditLimit: c.creditLimit,
+        creditLimit: String(c.creditLimit),
         statementDay: c.statementDay,
         paymentDueDay: c.paymentDueDay,
         minimumPaymentPercent: 2,
@@ -352,11 +352,11 @@ async function seedCardTransactions(
     userId,
     categoryId: firstCat.id,
     type: "expense",
-    amount: 0.01,
+    amount: "0.01",
     currency,
     description: "(seed marker — safe to delete)",
     notes: marker,
-    date: new Date("2026-01-01T00:00:00.000Z"),
+    date: "2026-01-01",
     paymentMethod: "other",
   });
 
@@ -376,11 +376,11 @@ async function seedCardTransactions(
       userId,
       categoryId: catRow.id,
       type: r.type,
-      amount: r.amount,
+      amount: String(r.amount),
       currency,
       description: r.description,
       notes: r.notes ?? null,
-      date: new Date(r.date + "T12:00:00.000Z"),
+      date: r.date,
       paymentMethod: r.paymentMethod,
       creditCardId: cardRow.id,
     });
@@ -467,11 +467,11 @@ async function seedRemittances(
         userId,
         categoryId: intlCat.id,
         type: "transfer",
-        amount: r.amount,
+        amount: String(r.amount),
         currency: r.fromCurrency,
         description: r.description,
         notes: null,
-        date: new Date(r.date + "T12:00:00.000Z"),
+        date: r.date,
         paymentMethod: "bank_transfer",
         isRecurring: r.isRecurring ?? false,
         recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
@@ -499,14 +499,14 @@ async function seedBudgetsForDemo(userId: string, cats: Category[]) {
 
   const groceries = cats.find((c) => c.name === "Groceries");
   const dining = cats.find((c) => c.name === "Dining Out");
-  const startOfMonth = new Date("2026-04-01T00:00:00.000Z");
+  const startOfMonth = "2026-04-01";
 
   const rows = [
     groceries && {
       id: randomUUID(),
       userId,
       categoryId: groceries.id,
-      amount: 400,
+      amount: "400",
       period: "monthly" as const,
       startDate: startOfMonth,
     },
@@ -514,7 +514,7 @@ async function seedBudgetsForDemo(userId: string, cats: Category[]) {
       id: randomUUID(),
       userId,
       categoryId: dining.id,
-      amount: 150,
+      amount: "150",
       period: "monthly" as const,
       startDate: startOfMonth,
     },

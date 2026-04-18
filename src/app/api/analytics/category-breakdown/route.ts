@@ -1,35 +1,37 @@
+import { z } from "zod";
 import { and, eq, gte, lte, sql, desc } from "drizzle-orm";
+import { format, startOfMonth } from "date-fns";
 import { db } from "@/lib/db";
 import { transactions, categories } from "@/lib/db/schema";
-import { ok, requireUser } from "@/lib/api";
+import { ok, zodFail, requireUser } from "@/lib/api";
+import type { AnalyticsCategoryBreakdownDTO } from "@/types";
+
+const querySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  type: z
+    .enum([
+      "expense",
+      "income",
+      "transfer",
+      "loan_given",
+      "loan_taken",
+      "repayment_received",
+      "repayment_made",
+    ])
+    .default("expense"),
+});
 
 export async function GET(req: Request) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const url = new URL(req.url);
-  const from = url.searchParams.get("from");
-  const to = url.searchParams.get("to");
-  const rawType = url.searchParams.get("type") ?? "expense";
-  const allowedTypes = new Set([
-    "expense",
-    "income",
-    "transfer",
-    "loan_given",
-    "loan_taken",
-    "repayment_received",
-    "repayment_made",
-  ]);
-  const type = (allowedTypes.has(rawType) ? rawType : "expense") as
-    | "expense"
-    | "income"
-    | "transfer"
-    | "loan_given"
-    | "loan_taken"
-    | "repayment_received"
-    | "repayment_made";
-  const fromDate = from ? new Date(from + "T00:00:00.000Z") : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  const toDate = to ? new Date(to + "T23:59:59.999Z") : new Date();
+  const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
+  if (!parsed.success) return zodFail(parsed.error);
+  const { from, to, type } = parsed.data;
+  const fromDate = from ?? format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const toDate = to ?? format(new Date(), "yyyy-MM-dd");
 
   const rows = await db
     .select({
@@ -53,5 +55,13 @@ export async function GET(req: Request) {
     .groupBy(categories.id)
     .orderBy(desc(sql<number>`SUM(${transactions.amount})`));
 
-  return ok(rows.map((r) => ({ ...r, total: Number(r.total), count: Number(r.count) })));
+  const items: AnalyticsCategoryBreakdownDTO[] = rows.map((r) => ({
+    categoryId: r.categoryId,
+    name: r.name,
+    icon: r.icon,
+    color: r.color,
+    total: Number(r.total),
+    count: Number(r.count),
+  }));
+  return ok(items satisfies AnalyticsCategoryBreakdownDTO[]);
 }

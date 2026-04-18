@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { format } from "date-fns";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -58,6 +59,26 @@ export function dateFromSeconds(v: number | Date | string): Date {
   if (v instanceof Date) return v;
   if (typeof v === "string") return new Date(v);
   return new Date(v * 1000);
+}
+
+/**
+ * Format a civil date (calendar day, no timezone) for display.
+ *
+ * Accepts `"YYYY-MM-DD"` strings (how the API now serves transaction and
+ * budget dates) or Date objects (legacy/instant inputs). For strings, the
+ * day is parsed and reconstructed as noon *local time* before formatting —
+ * noon avoids DST edge cases, and "local time" here only affects the
+ * rendered format, not which calendar day is shown.
+ *
+ * Only use this for transaction/budget dates. For `createdAt`/`updatedAt`
+ * (true instants), keep using `dateFromSeconds` + `format`.
+ */
+export function formatCivilDate(input: string | Date | number, fmtStr: string): string {
+  if (typeof input === "string") {
+    const [year, month, day] = input.split("-").map(Number);
+    return format(new Date(year, month - 1, day, 12, 0, 0, 0), fmtStr);
+  }
+  return format(dateFromSeconds(input), fmtStr);
 }
 
 /**

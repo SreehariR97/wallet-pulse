@@ -4,6 +4,34 @@ import { creditCards, transactions } from "@/lib/db/schema";
 import { creditCardUpdateSchema } from "@/lib/validations/credit-card";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { getStatementCycle, getNextDueDate } from "@/lib/credit-cards";
+import type {
+  CreditCardDTO,
+  CreditCardDetailDTO,
+  ArchivedIdDTO,
+  HardDeletedIdDTO,
+} from "@/types";
+
+type CreditCardPatch = Partial<
+  Omit<typeof creditCards.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">
+>;
+
+function toCreditCardDTO(c: typeof creditCards.$inferSelect): CreditCardDTO {
+  return {
+    id: c.id,
+    userId: c.userId,
+    name: c.name,
+    issuer: c.issuer,
+    last4: c.last4,
+    creditLimit: Number(c.creditLimit),
+    statementDay: c.statementDay,
+    paymentDueDay: c.paymentDueDay,
+    minimumPaymentPercent: c.minimumPaymentPercent,
+    isActive: c.isActive,
+    sortOrder: c.sortOrder,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
+}
 
 async function loadOwned(userId: string, id: string) {
   const [row] = await db
@@ -32,14 +60,15 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const totalExpense = Number(agg?.totalExpense ?? 0);
   const totalPayments = Number(agg?.totalPayments ?? 0);
   const balance = totalExpense - totalPayments;
-  const utilizationPercent = card.creditLimit > 0 ? (balance / card.creditLimit) * 100 : 0;
+  const creditLimit = Number(card.creditLimit);
+  const utilizationPercent = creditLimit > 0 ? (balance / creditLimit) * 100 : 0;
 
   const now = new Date();
   const currentCycle = getStatementCycle(now, card.statementDay, 0);
   const nextDueDate = getNextDueDate(now, card.paymentDueDay);
 
   return ok({
-    ...card,
+    ...toCreditCardDTO(card),
     balance,
     utilizationPercent,
     totalExpense,
@@ -48,7 +77,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     currentCycleEnd: currentCycle.end.toISOString(),
     nextDueDate: nextDueDate.toISOString(),
     minPaymentEstimate: Math.max(0, balance) * (card.minimumPaymentPercent / 100),
-  });
+  } satisfies CreditCardDetailDTO);
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -63,26 +92,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!parsed.success) return zodFail(parsed.error);
   const p = parsed.data;
 
-  await db
+  const patch: CreditCardPatch = {
+    ...(p.name !== undefined ? { name: p.name } : {}),
+    ...(p.issuer !== undefined ? { issuer: p.issuer } : {}),
+    ...(p.last4 !== undefined ? { last4: p.last4 } : {}),
+    ...(p.creditLimit !== undefined ? { creditLimit: String(p.creditLimit) } : {}),
+    ...(p.statementDay !== undefined ? { statementDay: p.statementDay } : {}),
+    ...(p.paymentDueDay !== undefined ? { paymentDueDay: p.paymentDueDay } : {}),
+    ...(p.minimumPaymentPercent !== undefined
+      ? { minimumPaymentPercent: p.minimumPaymentPercent }
+      : {}),
+    ...(p.isActive !== undefined ? { isActive: p.isActive } : {}),
+    ...(p.sortOrder !== undefined ? { sortOrder: p.sortOrder } : {}),
+  };
+  const [row] = await db
     .update(creditCards)
-    .set({
-      ...(p.name !== undefined ? { name: p.name } : {}),
-      ...(p.issuer !== undefined ? { issuer: p.issuer } : {}),
-      ...(p.last4 !== undefined ? { last4: p.last4 } : {}),
-      ...(p.creditLimit !== undefined ? { creditLimit: p.creditLimit } : {}),
-      ...(p.statementDay !== undefined ? { statementDay: p.statementDay } : {}),
-      ...(p.paymentDueDay !== undefined ? { paymentDueDay: p.paymentDueDay } : {}),
-      ...(p.minimumPaymentPercent !== undefined
-        ? { minimumPaymentPercent: p.minimumPaymentPercent }
-        : {}),
-      ...(p.isActive !== undefined ? { isActive: p.isActive } : {}),
-      ...(p.sortOrder !== undefined ? { sortOrder: p.sortOrder } : {}),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(creditCards.id, existing.id), eq(creditCards.userId, auth.userId)));
-
-  const [row] = await db.select().from(creditCards).where(eq(creditCards.id, existing.id)).limit(1);
-  return ok(row);
+    .set(patch)
+    .where(and(eq(creditCards.id, existing.id), eq(creditCards.userId, auth.userId)))
+    .returning();
+  return ok(toCreditCardDTO(row) satisfies CreditCardDTO);
 }
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
@@ -99,9 +127,9 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     // Default: archive. Hides from pickers; existing transactions keep the FK.
     await db
       .update(creditCards)
-      .set({ isActive: false, updatedAt: new Date() })
+      .set({ isActive: false })
       .where(and(eq(creditCards.id, existing.id), eq(creditCards.userId, auth.userId)));
-    return ok({ id: existing.id, archived: true });
+    return ok({ id: existing.id, archived: true } satisfies ArchivedIdDTO);
   }
 
   // Hard delete: only if no transactions reference the card. This keeps
@@ -121,5 +149,5 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   await db
     .delete(creditCards)
     .where(and(eq(creditCards.id, existing.id), eq(creditCards.userId, auth.userId)));
-  return ok({ id: existing.id, deleted: true });
+  return ok({ id: existing.id, deleted: true } satisfies HardDeletedIdDTO);
 }

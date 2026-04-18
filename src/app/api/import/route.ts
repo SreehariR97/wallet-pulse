@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
+import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { categories, transactions } from "@/lib/db/schema";
 import { fail, requireUser } from "@/lib/api";
@@ -95,6 +96,9 @@ export async function POST(req: Request) {
       errors.push({ row: idx + 1, error: `Invalid date "${r.date}"` });
       return;
     }
+    // transactions.date is a `date` column; extract civil day via date-fns
+    // format (local-TZ day, matching how browser-side defaults are emitted).
+    const civilDate = format(parsedDate, "yyyy-MM-dd");
 
     const description = (r.description ?? "").trim() || "Imported transaction";
 
@@ -127,11 +131,11 @@ export async function POST(req: Request) {
       userId: auth.userId,
       categoryId,
       type: type as TxTypeSql,
-      amount: amountNum,
+      amount: String(amountNum),
       currency: auth.user.currency ?? "USD",
       description,
       notes: r.notes || null,
-      date: parsedDate,
+      date: civilDate,
       paymentMethod,
       isRecurring: false,
       tags: r.tags || null,

@@ -1,20 +1,39 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear } from "date-fns";
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, format } from "date-fns";
 import { db } from "@/lib/db";
 import { budgets, categories, transactions } from "@/lib/db/schema";
 import { budgetCreateSchema } from "@/lib/validations/budget";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import type { BudgetDTO, BudgetListItemDTO } from "@/types";
 
-function periodRange(period: "weekly" | "monthly" | "yearly", ref = new Date()) {
+function toBudgetDTO(b: typeof budgets.$inferSelect): BudgetDTO {
+  return {
+    id: b.id,
+    userId: b.userId,
+    categoryId: b.categoryId,
+    amount: Number(b.amount),
+    period: b.period,
+    startDate: b.startDate,
+    endDate: b.endDate,
+    createdAt: b.createdAt.toISOString(),
+    updatedAt: b.updatedAt.toISOString(),
+  };
+}
+
+function periodRange(period: "weekly" | "monthly" | "yearly", ref = new Date()): { from: string; to: string } {
+  // Returns civil-date strings ("YYYY-MM-DD") so they compare directly with
+  // transactions.date (now a `date` column). `ref` is server-local-now; the
+  // civil day of "now" is the intended window anchor.
+  const toCivil = (d: Date) => format(d, "yyyy-MM-dd");
   switch (period) {
     case "weekly":
-      return { from: startOfWeek(ref, { weekStartsOn: 1 }), to: endOfWeek(ref, { weekStartsOn: 1 }) };
+      return { from: toCivil(startOfWeek(ref, { weekStartsOn: 1 })), to: toCivil(endOfWeek(ref, { weekStartsOn: 1 })) };
     case "yearly":
-      return { from: startOfYear(ref), to: endOfYear(ref) };
+      return { from: toCivil(startOfYear(ref)), to: toCivil(endOfYear(ref)) };
     default:
-      return { from: startOfMonth(ref), to: endOfMonth(ref) };
+      return { from: toCivil(startOfMonth(ref)), to: toCivil(endOfMonth(ref)) };
   }
 }
 
@@ -39,7 +58,7 @@ export async function GET() {
     .leftJoin(categories, eq(budgets.categoryId, categories.id))
     .where(eq(budgets.userId, auth.userId));
 
-  const withSpent = await Promise.all(
+  const withSpent: BudgetListItemDTO[] = await Promise.all(
     rows.map(async (b) => {
       const { from, to } = periodRange(b.period);
       const filters = [
@@ -53,11 +72,25 @@ export async function GET() {
         .select({ spent: sql<number>`COALESCE(SUM(${transactions.amount}), 0)` })
         .from(transactions)
         .where(and(...filters));
-      return { ...b, spent: Number(row?.spent ?? 0), periodFrom: from.toISOString(), periodTo: to.toISOString() };
-    })
+      return {
+        id: b.id,
+        categoryId: b.categoryId,
+        amount: Number(b.amount),
+        period: b.period,
+        startDate: b.startDate,
+        endDate: b.endDate,
+        createdAt: b.createdAt.toISOString(),
+        categoryName: b.categoryName,
+        categoryIcon: b.categoryIcon,
+        categoryColor: b.categoryColor,
+        spent: Number(row?.spent ?? 0),
+        periodFrom: from,
+        periodTo: to,
+      };
+    }),
   );
 
-  return ok(withSpent);
+  return ok(withSpent satisfies BudgetListItemDTO[]);
 }
 
 export async function POST(req: Request) {
@@ -91,18 +124,17 @@ export async function POST(req: Request) {
   }
 
   const id = randomUUID();
-  await db
+  const [row] = await db
     .insert(budgets)
     .values({
       id,
       userId: auth.userId,
       categoryId: parsed.data.categoryId ?? null,
-      amount: parsed.data.amount,
+      amount: String(parsed.data.amount),
       period: parsed.data.period,
-      startDate: new Date(parsed.data.startDate + "T00:00:00.000Z"),
-      endDate: parsed.data.endDate ? new Date(parsed.data.endDate + "T23:59:59.999Z") : null,
-    });
-
-  const [row] = await db.select().from(budgets).where(eq(budgets.id, id)).limit(1);
-  return NextResponse.json({ data: row }, { status: 201 });
+      startDate: parsed.data.startDate,
+      endDate: parsed.data.endDate ?? null,
+    })
+    .returning();
+  return NextResponse.json({ data: toBudgetDTO(row) satisfies BudgetDTO }, { status: 201 });
 }

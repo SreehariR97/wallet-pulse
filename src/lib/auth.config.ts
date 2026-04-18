@@ -39,16 +39,15 @@ export const authConfig = {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
       const path = nextUrl.pathname;
-      const publicPaths = ["/login", "/register"];
-      const isProtected =
-        path.startsWith("/dashboard") ||
-        path.startsWith("/transactions") ||
-        path.startsWith("/analytics") ||
-        path.startsWith("/budgets") ||
-        path.startsWith("/categories") ||
-        path.startsWith("/settings");
-      if (isProtected && !isLoggedIn) return false;
-      if (isLoggedIn && publicPaths.includes(path)) {
+
+      // Deny-list approach: every path requires auth unless explicitly listed here.
+      // Add new public (unauthenticated) pages to this array; everything else is
+      // protected automatically — no need to update an allow-list when adding routes.
+      const PUBLIC_PATHS = ["/", "/login", "/register"];
+      const isPublic = PUBLIC_PATHS.includes(path);
+
+      if (!isPublic && !isLoggedIn) return false;
+      if (isLoggedIn && (path === "/login" || path === "/register")) {
         return Response.redirect(new URL("/dashboard", nextUrl));
       }
       return true;

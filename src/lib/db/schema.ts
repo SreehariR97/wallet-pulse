@@ -3,6 +3,7 @@ import {
   pgTable,
   text,
   boolean,
+  date,
   doublePrecision,
   integer,
   numeric,
@@ -19,7 +20,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   currency: text("currency").notNull().default("USD"),
-  monthlyBudget: doublePrecision("monthly_budget"),
+  monthlyBudget: numeric("monthly_budget", { precision: 14, scale: 2 }),
   theme: text("theme").notNull().default("dark"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
@@ -38,7 +39,7 @@ export const categories = pgTable(
     // Enum values are validated in the Zod layer; keeping this as plain text
     // avoids a PG native enum type and keeps migrations trivially additive.
     type: text("type").$type<"expense" | "income" | "loan" | "transfer">().notNull(),
-    budgetLimit: doublePrecision("budget_limit"),
+    budgetLimit: numeric("budget_limit", { precision: 14, scale: 2 }),
     isDefault: boolean("is_default").notNull().default(false),
     sortOrder: doublePrecision("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
@@ -70,11 +71,13 @@ export const transactions = pgTable(
         | "repayment_made"
       >()
       .notNull(),
-    amount: doublePrecision("amount").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
     currency: text("currency").notNull().default("USD"),
     description: text("description").notNull(),
     notes: text("notes"),
-    date: timestamp("date", { withTimezone: true }).notNull(),
+    // Civil date (calendar day, no timezone) — see migration 0003. Use
+    // formatCivilDate() in src/lib/utils.ts for client rendering.
+    date: date("date").notNull(),
     paymentMethod: text("payment_method")
       .$type<"cash" | "credit_card" | "debit_card" | "bank_transfer" | "upi" | "other">()
       .notNull()
@@ -110,10 +113,10 @@ export const budgets = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     categoryId: text("category_id").references(() => categories.id, { onDelete: "cascade" }),
-    amount: doublePrecision("amount").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
     period: text("period").$type<"weekly" | "monthly" | "yearly">().notNull().default("monthly"),
-    startDate: timestamp("start_date", { withTimezone: true }).notNull(),
-    endDate: timestamp("end_date", { withTimezone: true }),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
   },
@@ -132,7 +135,7 @@ export const creditCards = pgTable(
     name: text("name").notNull(),
     issuer: text("issuer").notNull(),
     last4: text("last4"),
-    creditLimit: doublePrecision("credit_limit").notNull(),
+    creditLimit: numeric("credit_limit", { precision: 14, scale: 2 }).notNull(),
     // statementDay is the LAST day of the closing cycle (Chase / Amex
     // convention). Transactions dated on this day belong to the cycle that
     // just closed; the new cycle starts the following day. Values 1..31
@@ -152,9 +155,9 @@ export const creditCards = pgTable(
   })
 );
 
-// fx_rate and fee use numeric() for exact decimal precision — FX audits and
-// fee accumulation accrue rounding errors in float64. Other money values
-// (amount, credit_limit) use doublePrecision per house convention.
+// Amounts stored as numeric(14,2) for exact decimal precision (see migration
+// 0002). Remittances fx_rate and fee use tighter precisions matching their
+// column definitions below.
 export const remittances = pgTable(
   "remittances",
   {

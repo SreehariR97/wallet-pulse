@@ -1,14 +1,13 @@
 "use client";
 import Link from "next/link";
 import * as React from "react";
-import { format } from "date-fns";
 import { ArrowDown, ArrowUp, ChevronsUpDown, CreditCard, MoreHorizontal, Pencil, Trash2, Repeat } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { cn, dateFromSeconds, formatCurrency, paymentMethodLabel, isInflow, isOutflow, isLoanType, transactionTypeLabel } from "@/lib/utils";
+import { cn, formatCivilDate, formatCurrency, paymentMethodLabel, isInflow, isOutflow, isLoanType, transactionTypeLabel } from "@/lib/utils";
 import type { TransactionListItem, TxType } from "@/types";
 
 function amountColorClass(type: TxType): string {
@@ -87,7 +86,7 @@ export function TransactionTable({
                     />
                   </td>
                   <td className="whitespace-nowrap px-3 py-3.5 text-[13px] font-[460] text-muted-foreground">
-                    {format(dateFromSeconds(t.date), "MMM d, yyyy")}
+                    {formatCivilDate(t.date, "MMM d, yyyy")}
                   </td>
                   <td className="px-3 py-3.5">
                     <div className="flex items-center gap-2">

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { passwordUpdateSchema } from "@/lib/validations/user";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import type { PasswordUpdatedDTO } from "@/types";
 
 export async function PUT(req: Request) {
   const auth = await requireUser();
@@ -20,6 +21,6 @@ export async function PUT(req: Request) {
   if (!valid) return fail(400, "Current password is incorrect");
 
   const hash = await bcrypt.hash(parsed.data.newPassword, 10);
-  await db.update(users).set({ passwordHash: hash, updatedAt: new Date() }).where(eq(users.id, auth.userId));
-  return ok({ updated: true });
+  await db.update(users).set({ passwordHash: hash }).where(eq(users.id, auth.userId));
+  return ok({ updated: true } satisfies PasswordUpdatedDTO);
 }

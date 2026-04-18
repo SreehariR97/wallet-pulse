@@ -15,6 +15,34 @@
       "when": 1776445194959,
       "tag": "0001_credit_cards_and_remittances",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776445200000,
+      "tag": "0002_money_to_numeric",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776445210000,
+      "tag": "0003_civil_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776445220000,
+      "tag": "0004_updated_at_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776445230000,
+      "tag": "0005_trgm_search_index",
+      "breakpoints": true
     }
   ]
 }

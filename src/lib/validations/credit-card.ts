@@ -10,7 +10,10 @@ export const creditCardCreateSchema = z.object({
     .regex(/^\d{4}$/, "Last 4 must be exactly 4 digits")
     .optional()
     .nullable(),
-  creditLimit: z.coerce.number().positive("Credit limit must be greater than 0"),
+  creditLimit: z.coerce
+    .number()
+    .positive("Credit limit must be greater than 0")
+    .max(99999999999.99, "Credit limit exceeds maximum value"),
   statementDay: dayOfMonth,
   paymentDueDay: dayOfMonth,
   // Allow 0..100; default 2% matches the minimumPaymentPercent DB default.
@@ -23,7 +26,10 @@ export const creditCardUpdateSchema = creditCardCreateSchema
   .extend({ isActive: z.boolean().optional() });
 
 export const creditCardPaySchema = z.object({
-  amount: z.coerce.number().positive("Amount must be greater than 0"),
+  amount: z.coerce
+    .number()
+    .positive("Amount must be greater than 0")
+    .max(99999999999.99, "Amount exceeds maximum value"),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
   notes: z.string().max(2000).optional().nullable(),
 });

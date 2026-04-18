@@ -16,6 +16,7 @@ import {
 } from "@/lib/validations/remittance";
 import { TRANSFER_CATEGORY_NAMES } from "@/lib/db/defaults";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import type { RemittanceDTO } from "@/types";
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -28,8 +29,8 @@ export async function GET(req: Request) {
 
   const filters = [eq(remittances.userId, auth.userId)];
   if (q.service) filters.push(eq(remittances.service, q.service));
-  if (q.from) filters.push(gte(transactions.date, new Date(q.from + "T00:00:00.000Z")));
-  if (q.to) filters.push(lte(transactions.date, new Date(q.to + "T23:59:59.999Z")));
+  if (q.from) filters.push(gte(transactions.date, q.from));
+  if (q.to) filters.push(lte(transactions.date, q.to));
 
   const whereClause = and(...filters);
 
@@ -77,14 +78,24 @@ export async function GET(req: Request) {
   // numeric() arrives as string from pg; cast to Number for JSON. Lossless
   // for human-scale values (rates ~1–200, fees ~0–100); extreme magnitudes
   // (1e-20, 1e15) would clip precision — not a realistic concern for FX.
-  return ok(
-    rows.map((r) => ({
-      ...r,
-      fxRate: Number(r.fxRate),
-      fee: Number(r.fee),
-    })),
-    { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) },
-  );
+  const items: RemittanceDTO[] = rows.map((r) => ({
+    id: r.id,
+    transactionId: r.transactionId,
+    fromCurrency: r.fromCurrency,
+    toCurrency: r.toCurrency,
+    fxRate: Number(r.fxRate),
+    fee: Number(r.fee),
+    service: r.service,
+    recipientNote: r.recipientNote,
+    createdAt: r.createdAt.toISOString(),
+    amount: Number(r.amount),
+    currency: r.currency,
+    description: r.description,
+    notes: r.notes,
+    date: r.date,
+    paymentMethod: r.paymentMethod,
+  }));
+  return ok(items satisfies RemittanceDTO[], { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) });
 }
 
 export async function POST(req: Request) {
@@ -121,65 +132,63 @@ export async function POST(req: Request) {
 
   // Atomic: both rows commit or neither. Non-interactive on Neon HTTP — we
   // pre-generate IDs so we don't need to read one insert to write the next.
-  await db.transaction(async (trx) => {
-    await trx.insert(transactions).values({
-      id: txId,
-      userId: auth.userId,
-      categoryId: cat.id,
-      type: "transfer",
-      amount: r.amount,
-      currency: r.fromCurrency,
-      description: r.description,
-      notes: r.notes ?? null,
-      date: new Date(r.date + "T12:00:00.000Z"),
-      paymentMethod: r.paymentMethod,
-      isRecurring: r.isRecurring,
-      recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
-      tags: r.tags ?? null,
-    });
-    await trx.insert(remittances).values({
-      id: remitId,
-      transactionId: txId,
-      userId: auth.userId,
-      fromCurrency: r.fromCurrency,
-      toCurrency: r.toCurrency,
-      // numeric columns take strings in Drizzle to preserve precision.
-      fxRate: r.fxRate.toString(),
-      fee: r.fee.toString(),
-      service: r.service,
-      recipientNote: r.recipientNote ?? null,
-    });
+  // Each insert `.returning()` so we can shape the response without a
+  // follow-up JOIN select.
+  const { tx, rem } = await db.transaction(async (trx) => {
+    const [txRow] = await trx
+      .insert(transactions)
+      .values({
+        id: txId,
+        userId: auth.userId,
+        categoryId: cat.id,
+        type: "transfer",
+        amount: String(r.amount),
+        currency: r.fromCurrency,
+        description: r.description,
+        notes: r.notes ?? null,
+        date: r.date,
+        paymentMethod: r.paymentMethod,
+        isRecurring: r.isRecurring,
+        recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
+        tags: r.tags ?? null,
+      })
+      .returning();
+    const [remRow] = await trx
+      .insert(remittances)
+      .values({
+        id: remitId,
+        transactionId: txId,
+        userId: auth.userId,
+        fromCurrency: r.fromCurrency,
+        toCurrency: r.toCurrency,
+        // numeric columns take strings in Drizzle to preserve precision.
+        fxRate: r.fxRate.toString(),
+        fee: r.fee.toString(),
+        service: r.service,
+        recipientNote: r.recipientNote ?? null,
+      })
+      .returning();
+    return { tx: txRow, rem: remRow };
   });
-
-  const [row] = await db
-    .select({
-      id: remittances.id,
-      transactionId: remittances.transactionId,
-      fromCurrency: remittances.fromCurrency,
-      toCurrency: remittances.toCurrency,
-      fxRate: remittances.fxRate,
-      fee: remittances.fee,
-      service: remittances.service,
-      recipientNote: remittances.recipientNote,
-      createdAt: remittances.createdAt,
-      amount: transactions.amount,
-      currency: transactions.currency,
-      description: transactions.description,
-      notes: transactions.notes,
-      date: transactions.date,
-      paymentMethod: transactions.paymentMethod,
-    })
-    .from(remittances)
-    .innerJoin(transactions, eq(remittances.transactionId, transactions.id))
-    .where(eq(remittances.id, remitId))
-    .limit(1);
 
   return ok(
     {
-      ...row,
-      fxRate: row ? Number(row.fxRate) : 0,
-      fee: row ? Number(row.fee) : 0,
-    },
+      id: rem.id,
+      transactionId: rem.transactionId,
+      fromCurrency: rem.fromCurrency,
+      toCurrency: rem.toCurrency,
+      fxRate: Number(rem.fxRate),
+      fee: Number(rem.fee),
+      service: rem.service,
+      recipientNote: rem.recipientNote,
+      createdAt: rem.createdAt.toISOString(),
+      amount: Number(tx.amount),
+      currency: tx.currency,
+      description: tx.description,
+      notes: tx.notes,
+      date: tx.date,
+      paymentMethod: tx.paymentMethod,
+    } satisfies RemittanceDTO,
     { created: true },
   );
 }
