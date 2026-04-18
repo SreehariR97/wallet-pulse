@@ -1,18 +1,27 @@
+import { z } from "zod";
 import { and, eq, gte, lte, sql, asc } from "drizzle-orm";
+import { format, startOfMonth } from "date-fns";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
-import { ok, requireUser } from "@/lib/api";
+import { ok, zodFail, requireUser } from "@/lib/api";
+import type { AnalyticsTrendPointDTO } from "@/types";
+
+const querySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  granularity: z.enum(["daily", "monthly"]).default("daily"),
+});
 
 export async function GET(req: Request) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const url = new URL(req.url);
-  const from = url.searchParams.get("from");
-  const to = url.searchParams.get("to");
-  const granularity = (url.searchParams.get("granularity") ?? "daily") as "daily" | "monthly";
-  const fromDate = from ? new Date(from + "T00:00:00.000Z") : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  const toDate = to ? new Date(to + "T23:59:59.999Z") : new Date();
+  const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
+  if (!parsed.success) return zodFail(parsed.error);
+  const { from, to, granularity } = parsed.data;
+  const fromDate = from ?? format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const toDate = to ?? format(new Date(), "yyyy-MM-dd");
 
   // Postgres uses to_char() for formatted date output. We must inline the
   // format literal (not parameterize it) so the expression in SELECT and
@@ -41,12 +50,11 @@ export async function GET(req: Request) {
     .groupBy(bucket)
     .orderBy(asc(bucket));
 
-  return ok(
-    rows.map((r) => ({
-      bucket: r.bucket,
-      income: Number(r.income),
-      expense: Number(r.expense),
-      net: Number(r.income) - Number(r.expense),
-    }))
-  );
+  const items: AnalyticsTrendPointDTO[] = rows.map((r) => ({
+    bucket: r.bucket,
+    income: Number(r.income),
+    expense: Number(r.expense),
+    net: Number(r.income) - Number(r.expense),
+  }));
+  return ok(items satisfies AnalyticsTrendPointDTO[]);
 }

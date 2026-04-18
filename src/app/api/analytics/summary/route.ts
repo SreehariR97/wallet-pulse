@@ -1,17 +1,26 @@
+import { z } from "zod";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { format, startOfMonth } from "date-fns";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
-import { ok, requireUser } from "@/lib/api";
+import { ok, zodFail, requireUser } from "@/lib/api";
+import type { AnalyticsSummaryDTO } from "@/types";
+
+const querySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+});
 
 export async function GET(req: Request) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const url = new URL(req.url);
-  const from = url.searchParams.get("from");
-  const to = url.searchParams.get("to");
-  const fromDate = from ? new Date(from + "T00:00:00.000Z") : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  const toDate = to ? new Date(to + "T23:59:59.999Z") : new Date();
+  const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
+  if (!parsed.success) return zodFail(parsed.error);
+  // Default window: start-of-month … today, as civil-date strings.
+  const fromDate = parsed.data.from ?? format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const toDate = parsed.data.to ?? format(new Date(), "yyyy-MM-dd");
 
   const filters = [
     eq(transactions.userId, auth.userId),
@@ -39,7 +48,7 @@ export async function GET(req: Request) {
     net,
     savingsRate,
     count: Number(row?.count ?? 0),
-    from: fromDate.toISOString(),
-    to: toDate.toISOString(),
-  });
+    from: fromDate,
+    to: toDate,
+  } satisfies AnalyticsSummaryDTO);
 }

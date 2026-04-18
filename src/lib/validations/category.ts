@@ -8,7 +8,12 @@ export const categoryCreateSchema = z.object({
     .regex(/^#[0-9A-Fa-f]{6}$/, "Must be a hex color like #FF6B6B")
     .default("#6366F1"),
   type: z.enum(["expense", "income", "loan"]),
-  budgetLimit: z.coerce.number().positive().optional().nullable(),
+  budgetLimit: z.coerce
+    .number()
+    .positive()
+    .max(99999999999.99, "Budget limit exceeds maximum value")
+    .optional()
+    .nullable(),
 });
 
 export const categoryUpdateSchema = categoryCreateSchema.partial();

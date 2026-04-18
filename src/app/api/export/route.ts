@@ -1,22 +1,39 @@
+import { z } from "zod";
 import { and, eq, gte, lte, asc } from "drizzle-orm";
 import Papa from "papaparse";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { transactions, categories, budgets } from "@/lib/db/schema";
-import { fail, requireUser } from "@/lib/api";
+import { zodFail, requireUser } from "@/lib/api";
+import type {
+  ExportJsonDTO,
+  TransactionExportRowDTO,
+  CategoryDTO,
+  BudgetDTO,
+} from "@/types";
+
+const querySchema = z.object({
+  // .toLowerCase() in the pre-Zod code accepted arbitrary strings and fell
+  // through to the final `fmt !== "csv"` check. Tighten to an explicit enum.
+  format: z.enum(["csv", "json"]).default("csv"),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+});
 
 export async function GET(req: Request) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const url = new URL(req.url);
-  const fmt = (url.searchParams.get("format") ?? "csv").toLowerCase();
-  const from = url.searchParams.get("from");
-  const to = url.searchParams.get("to");
+  const rawParams = Object.fromEntries(url.searchParams);
+  if (typeof rawParams.format === "string") rawParams.format = rawParams.format.toLowerCase();
+  const parsed = querySchema.safeParse(rawParams);
+  if (!parsed.success) return zodFail(parsed.error);
+  const { format: fmt, from, to } = parsed.data;
 
   const filters = [eq(transactions.userId, auth.userId)];
-  if (from) filters.push(gte(transactions.date, new Date(from + "T00:00:00.000Z")));
-  if (to) filters.push(lte(transactions.date, new Date(to + "T23:59:59.999Z")));
+  if (from) filters.push(gte(transactions.date, from));
+  if (to) filters.push(lte(transactions.date, to));
 
   const rows = await db
     .select({
@@ -41,16 +58,53 @@ export async function GET(req: Request) {
   const stamp = format(new Date(), "yyyy-MM-dd");
 
   if (fmt === "json") {
-    const payload = {
+    const catRows = await db.select().from(categories).where(eq(categories.userId, auth.userId));
+    const budgetRows = await db.select().from(budgets).where(eq(budgets.userId, auth.userId));
+    const txItems: TransactionExportRowDTO[] = rows.map((r) => ({
+      id: r.id,
+      date: r.date,
+      type: r.type,
+      category: r.category,
+      amount: Number(r.amount),
+      currency: r.currency,
+      description: r.description,
+      notes: r.notes,
+      paymentMethod: r.paymentMethod,
+      isRecurring: r.isRecurring,
+      recurringFrequency: r.recurringFrequency,
+      tags: r.tags,
+    }));
+    const catItems: CategoryDTO[] = catRows.map((c) => ({
+      id: c.id,
+      userId: c.userId,
+      name: c.name,
+      icon: c.icon,
+      color: c.color,
+      type: c.type,
+      budgetLimit: c.budgetLimit != null ? Number(c.budgetLimit) : null,
+      isDefault: c.isDefault,
+      sortOrder: c.sortOrder,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    }));
+    const budgetItems: BudgetDTO[] = budgetRows.map((b) => ({
+      id: b.id,
+      userId: b.userId,
+      categoryId: b.categoryId,
+      amount: Number(b.amount),
+      period: b.period,
+      startDate: b.startDate,
+      endDate: b.endDate,
+      createdAt: b.createdAt.toISOString(),
+      updatedAt: b.updatedAt.toISOString(),
+    }));
+    const payload: ExportJsonDTO = {
       exportedAt: new Date().toISOString(),
-      transactions: rows.map((r) => ({
-        ...r,
-        date: r.date instanceof Date ? r.date.toISOString() : r.date,
-      })),
-      categories: await db.select().from(categories).where(eq(categories.userId, auth.userId)),
-      budgets: await db.select().from(budgets).where(eq(budgets.userId, auth.userId)),
+      transactions: txItems,
+      categories: catItems,
+      budgets: budgetItems,
     };
-    return new Response(JSON.stringify(payload, null, 2), {
+    return new Response(JSON.stringify(payload satisfies ExportJsonDTO, null, 2), {
       headers: {
         "Content-Type": "application/json",
         "Content-Disposition": `attachment; filename="walletpulse-${stamp}.json"`,
@@ -58,14 +112,16 @@ export async function GET(req: Request) {
     });
   }
 
-  if (fmt !== "csv") return fail(400, "Unsupported format");
+  // fmt is Zod-narrowed to "csv" | "json"; the "json" branch returned above,
+  // so the only remaining possibility is "csv". Leaving this comment where
+  // the historical fallback used to live.
 
   const csv = Papa.unparse(
     rows.map((r) => ({
-      Date: r.date instanceof Date ? format(r.date, "yyyy-MM-dd") : r.date,
+      Date: r.date,
       Type: r.type,
       Category: r.category ?? "",
-      Amount: r.amount,
+      Amount: Number(r.amount),
       Currency: r.currency,
       Description: r.description,
       Notes: r.notes ?? "",

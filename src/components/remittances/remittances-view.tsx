@@ -15,7 +15,7 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { cn, currencySymbol, dateFromSeconds, formatCurrency, formatFxRate } from "@/lib/utils";
+import { cn, currencySymbol, dateFromSeconds, formatCivilDate, formatCurrency, formatFxRate } from "@/lib/utils";
 import { RemittanceForm, type RemittanceFormInitial } from "./remittance-form";
 import { RemittanceStats, type StatsData } from "./stats-cards";
 import { ServiceBadge } from "./service-badge";
@@ -243,7 +243,7 @@ function RemittanceList({
                   className="border-b border-border/60 leading-[1.4] transition-colors last:border-b-0 hover:bg-muted"
                 >
                   <td className="whitespace-nowrap px-4 py-3 text-[13px] font-[460] text-muted-foreground">
-                    {format(dateFromSeconds(r.date), "MMM d, yyyy")}
+                    {formatCivilDate(r.date, "MMM d, yyyy")}
                   </td>
                   <td className="px-3 py-3">
                     <ServiceBadge service={r.service} />

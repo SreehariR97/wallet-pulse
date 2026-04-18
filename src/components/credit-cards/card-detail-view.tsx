@@ -183,7 +183,7 @@ export function CardDetailView({
             ? a.description
             : sort === "createdAt"
               ? new Date(a.createdAt as string | number | Date).getTime()
-              : new Date(a.date as string | number | Date).getTime();
+              : String(a.date);
       const bx =
         sort === "amount"
           ? b.amount
@@ -191,7 +191,7 @@ export function CardDetailView({
             ? b.description
             : sort === "createdAt"
               ? new Date(b.createdAt as string | number | Date).getTime()
-              : new Date(b.date as string | number | Date).getTime();
+              : String(b.date);
       if (ax < bx) return order === "asc" ? -1 : 1;
       if (ax > bx) return order === "asc" ? 1 : -1;
       return 0;

@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -35,7 +34,7 @@ export default async function EditTransactionPage({ params }: { params: { id: st
               categoryId: row.categoryId,
               description: row.description,
               notes: row.notes ?? "",
-              date: format(row.date, "yyyy-MM-dd"),
+              date: row.date,
               paymentMethod: row.paymentMethod,
               creditCardId: row.creditCardId ?? "",
               isRecurring: row.isRecurring,

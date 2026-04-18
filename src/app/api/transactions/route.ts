@@ -1,10 +1,33 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { and, asc, desc, eq, gte, lte, ilike, isNotNull, isNull, sql, or, exists } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, ilike, isNotNull, isNull, sql, or, exists, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { transactions, categories, creditCards, remittances } from "@/lib/db/schema";
 import { transactionCreateSchema, transactionQuerySchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import type { TransactionDTO, TransactionListItem } from "@/types";
+
+function toTransactionDTO(t: typeof transactions.$inferSelect): TransactionDTO {
+  return {
+    id: t.id,
+    userId: t.userId,
+    categoryId: t.categoryId,
+    type: t.type,
+    amount: Number(t.amount),
+    currency: t.currency,
+    description: t.description,
+    notes: t.notes,
+    date: t.date,
+    paymentMethod: t.paymentMethod,
+    creditCardId: t.creditCardId,
+    isRecurring: t.isRecurring,
+    recurringFrequency: t.recurringFrequency,
+    tags: t.tags,
+    receiptUrl: t.receiptUrl,
+    createdAt: t.createdAt.toISOString(),
+    updatedAt: t.updatedAt.toISOString(),
+  };
+}
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -15,7 +38,7 @@ export async function GET(req: Request) {
   if (!parsed.success) return zodFail(parsed.error);
   const q = parsed.data;
 
-  const filters = [eq(transactions.userId, auth.userId)];
+  const filters: (SQL | undefined)[] = [eq(transactions.userId, auth.userId)];
   if (q.categoryId) filters.push(eq(transactions.categoryId, q.categoryId));
   if (q.type) filters.push(eq(transactions.type, q.type));
   if (q.paymentMethod) filters.push(eq(transactions.paymentMethod, q.paymentMethod));
@@ -39,13 +62,13 @@ export async function GET(req: Request) {
       ),
     );
   }
-  if (q.from) filters.push(gte(transactions.date, new Date(q.from + "T00:00:00.000Z")));
-  if (q.to) filters.push(lte(transactions.date, new Date(q.to + "T23:59:59.999Z")));
-  if (q.minAmount !== undefined) filters.push(gte(transactions.amount, q.minAmount));
-  if (q.maxAmount !== undefined) filters.push(lte(transactions.amount, q.maxAmount));
+  if (q.from) filters.push(gte(transactions.date, q.from));
+  if (q.to) filters.push(lte(transactions.date, q.to));
+  if (q.minAmount !== undefined) filters.push(gte(transactions.amount, String(q.minAmount)));
+  if (q.maxAmount !== undefined) filters.push(lte(transactions.amount, String(q.maxAmount)));
   if (q.search) {
     const s = `%${q.search}%`;
-    filters.push(or(ilike(transactions.description, s), ilike(transactions.notes, s)) as any);
+    filters.push(or(ilike(transactions.description, s), ilike(transactions.notes, s)));
   }
   if (q.tags) filters.push(ilike(transactions.tags, `%${q.tags}%`));
 
@@ -94,7 +117,28 @@ export async function GET(req: Request) {
     .limit(q.limit)
     .offset((q.page - 1) * q.limit);
 
-  return ok(rows, { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) });
+  const normalized: TransactionListItem[] = rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    amount: Number(r.amount),
+    currency: r.currency,
+    description: r.description,
+    notes: r.notes,
+    date: r.date,
+    paymentMethod: r.paymentMethod,
+    isRecurring: r.isRecurring,
+    recurringFrequency: r.recurringFrequency,
+    tags: r.tags,
+    categoryId: r.categoryId,
+    categoryName: r.categoryName,
+    categoryIcon: r.categoryIcon,
+    categoryColor: r.categoryColor,
+    creditCardId: r.creditCardId,
+    creditCardName: r.creditCardName,
+    creditCardLast4: r.creditCardLast4,
+    createdAt: r.createdAt.toISOString(),
+  }));
+  return ok(normalized satisfies TransactionListItem[], { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) });
 }
 
 export async function POST(req: Request) {
@@ -131,26 +175,24 @@ export async function POST(req: Request) {
     if (!card) return fail(400, "Invalid credit card");
   }
 
-  const id = randomUUID();
-  await db
+  const [row] = await db
     .insert(transactions)
     .values({
-      id,
+      id: randomUUID(),
       userId: auth.userId,
       categoryId: t.categoryId,
       type: t.type,
-      amount: t.amount,
+      amount: String(t.amount),
       currency: auth.user.currency ?? "USD",
       description: t.description,
       notes: t.notes ?? null,
-      date: new Date(t.date + "T12:00:00.000Z"),
+      date: t.date,
       paymentMethod: t.paymentMethod,
       creditCardId: t.creditCardId ?? null,
       isRecurring: t.isRecurring,
       recurringFrequency: t.isRecurring ? t.recurringFrequency ?? null : null,
       tags: t.tags ?? null,
-    });
-
-  const [row] = await db.select().from(transactions).where(eq(transactions.id, id)).limit(1);
-  return NextResponse.json({ data: row }, { status: 201 });
+    })
+    .returning();
+  return NextResponse.json({ data: toTransactionDTO(row) satisfies TransactionDTO }, { status: 201 });
 }

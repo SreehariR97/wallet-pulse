@@ -20,6 +20,7 @@ if (!connectionString) {
   console.error("DATABASE_URL is not set.");
   process.exit(1);
 }
+console.log("Migrating against host:", new URL(connectionString.replace("postgresql://", "http://")).host);
 
 async function main() {
   const pool = new Pool({ connectionString });

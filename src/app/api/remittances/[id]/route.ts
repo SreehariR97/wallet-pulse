@@ -3,6 +3,40 @@ import { db } from "@/lib/db";
 import { remittances, transactions } from "@/lib/db/schema";
 import { remittanceUpdateSchema } from "@/lib/validations/remittance";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import type { RemittanceDetailDTO, HardDeletedIdDTO } from "@/types";
+
+type TransactionPatch = Partial<
+  Omit<typeof transactions.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">
+>;
+type RemittancePatch = Partial<
+  Omit<typeof remittances.$inferInsert, "id" | "userId" | "transactionId" | "createdAt" | "updatedAt">
+>;
+
+type LoadedRow = NonNullable<Awaited<ReturnType<typeof loadOwned>>>;
+
+function toDetailDTO(row: LoadedRow): RemittanceDetailDTO {
+  return {
+    id: row.id,
+    transactionId: row.transactionId,
+    userId: row.userId,
+    fromCurrency: row.fromCurrency,
+    toCurrency: row.toCurrency,
+    fxRate: Number(row.fxRate),
+    fee: Number(row.fee),
+    service: row.service,
+    recipientNote: row.recipientNote,
+    createdAt: row.createdAt.toISOString(),
+    amount: Number(row.amount),
+    currency: row.currency,
+    description: row.description,
+    notes: row.notes,
+    date: row.date,
+    paymentMethod: row.paymentMethod,
+    isRecurring: row.isRecurring,
+    recurringFrequency: row.recurringFrequency,
+    tags: row.tags,
+  };
+}
 
 async function loadOwned(userId: string, id: string) {
   const [row] = await db
@@ -41,7 +75,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const row = await loadOwned(auth.userId, params.id);
   if (!row) return fail(404, "Remittance not found");
 
-  return ok({ ...row, fxRate: Number(row.fxRate), fee: Number(row.fee) });
+  return ok(toDetailDTO(row) satisfies RemittanceDetailDTO);
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -58,9 +92,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   // Split into tx-side and remittance-side partials so each UPDATE only
   // touches the columns it owns.
-  const txSet: Record<string, unknown> = { updatedAt: new Date() };
-  if (p.amount !== undefined) txSet.amount = p.amount;
-  if (p.date !== undefined) txSet.date = new Date(p.date + "T12:00:00.000Z");
+  const txSet: TransactionPatch = {};
+  if (p.amount !== undefined) txSet.amount = String(p.amount);
+  if (p.date !== undefined) txSet.date = p.date;
   if (p.description !== undefined) txSet.description = p.description;
   if (p.notes !== undefined) txSet.notes = p.notes;
   if (p.paymentMethod !== undefined) txSet.paymentMethod = p.paymentMethod;
@@ -69,7 +103,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (p.tags !== undefined) txSet.tags = p.tags;
   if (p.fromCurrency !== undefined) txSet.currency = p.fromCurrency;
 
-  const remitSet: Record<string, unknown> = { updatedAt: new Date() };
+  const remitSet: RemittancePatch = {};
   if (p.fromCurrency !== undefined) remitSet.fromCurrency = p.fromCurrency;
   if (p.toCurrency !== undefined) remitSet.toCurrency = p.toCurrency;
   if (p.fxRate !== undefined) remitSet.fxRate = p.fxRate.toString();
@@ -78,7 +112,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (p.recipientNote !== undefined) remitSet.recipientNote = p.recipientNote;
 
   await db.transaction(async (trx) => {
-    if (Object.keys(txSet).length > 1) {
+    if (Object.keys(txSet).length > 0) {
       await trx
         .update(transactions)
         .set(txSet)
@@ -86,7 +120,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           and(eq(transactions.id, existing.transactionId), eq(transactions.userId, auth.userId)),
         );
     }
-    if (Object.keys(remitSet).length > 1) {
+    if (Object.keys(remitSet).length > 0) {
       await trx
         .update(remittances)
         .set(remitSet)
@@ -95,7 +129,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
 
   const row = await loadOwned(auth.userId, existing.id);
-  return ok(row ? { ...row, fxRate: Number(row.fxRate), fee: Number(row.fee) } : null);
+  return ok(row ? (toDetailDTO(row) satisfies RemittanceDetailDTO) : null);
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
@@ -111,5 +145,5 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     .where(
       and(eq(transactions.id, existing.transactionId), eq(transactions.userId, auth.userId)),
     );
-  return ok({ id: existing.id, deleted: true });
+  return ok({ id: existing.id, deleted: true } satisfies HardDeletedIdDTO);
 }

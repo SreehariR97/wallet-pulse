@@ -1,11 +1,10 @@
 "use client";
 import Link from "next/link";
-import { format } from "date-fns";
 import { ArrowRight, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
-import { cn, dateFromSeconds, formatCurrency } from "@/lib/utils";
+import { cn, formatCivilDate, formatCurrency } from "@/lib/utils";
 import type { TransactionListItem } from "@/types";
 
 export function RecentTransactions({
@@ -58,7 +57,7 @@ export function RecentTransactions({
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-[540] leading-[1.35]">{t.description}</div>
             <div className="text-xs font-[460] leading-[1.4] text-muted-foreground">
-              {t.categoryName ?? "Uncategorized"} · {format(dateFromSeconds(t.date), "MMM d")}
+              {t.categoryName ?? "Uncategorized"} · {formatCivilDate(t.date, "MMM d")}
             </div>
           </div>
           <div className={cn(

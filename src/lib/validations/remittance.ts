@@ -15,7 +15,10 @@ const currencyCode = z.string().regex(/^[A-Z]{3}$/i, "Currency must be a 3-lette
 
 export const remittanceCreateSchema = z.object({
   // Transaction-side fields (type is forced to "transfer" server-side).
-  amount: z.coerce.number().positive("Amount must be greater than 0"),
+  amount: z.coerce
+    .number()
+    .positive("Amount must be greater than 0")
+    .max(99999999999.99, "Amount exceeds maximum value"),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
   description: z.string().min(1, "Description is required").max(200),
   notes: z.string().max(2000).optional().nullable(),
@@ -29,9 +32,15 @@ export const remittanceCreateSchema = z.object({
   fromCurrency: currencyCode.default("USD"),
   toCurrency: currencyCode.default("INR"),
   // fxRate — stored as numeric(12,6). Accept up to 6 decimal places.
-  fxRate: z.coerce.number().positive("FX rate must be greater than 0"),
+  fxRate: z.coerce
+    .number()
+    .positive("FX rate must be greater than 0")
+    .max(999999.999999, "Exchange rate exceeds maximum value"),
   // fee — stored as numeric(12,4). Non-negative.
-  fee: z.coerce.number().min(0, "Fee cannot be negative"),
+  fee: z.coerce
+    .number()
+    .min(0, "Fee cannot be negative")
+    .max(99999999.9999, "Fee exceeds maximum value"),
   service: remittanceServiceEnum,
   recipientNote: z.string().max(200).optional().nullable(),
 });
@@ -39,18 +48,18 @@ export const remittanceCreateSchema = z.object({
 export const remittanceUpdateSchema = remittanceCreateSchema.partial();
 
 export const remittanceQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(25),
   service: remittanceServiceEnum.optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
   sort: z.enum(["date", "amount", "fxRate"]).default("date"),
   order: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export const remittanceStatsQuerySchema = z.object({
-  from: z.string().optional(),
-  to: z.string().optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
 });
 
 export type RemittanceCreateInput = z.infer<typeof remittanceCreateSchema>;

@@ -14,6 +14,7 @@ import { db } from "@/lib/db";
 import { remittances, transactions } from "@/lib/db/schema";
 import { remittanceStatsQuerySchema } from "@/lib/validations/remittance";
 import { ok, zodFail, requireUser } from "@/lib/api";
+import type { RemittanceStatsRowDTO } from "@/types";
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -25,8 +26,8 @@ export async function GET(req: Request) {
   const q = parsed.data;
 
   const filters = [eq(remittances.userId, auth.userId)];
-  if (q.from) filters.push(gte(transactions.date, new Date(q.from + "T00:00:00.000Z")));
-  if (q.to) filters.push(lte(transactions.date, new Date(q.to + "T23:59:59.999Z")));
+  if (q.from) filters.push(gte(transactions.date, q.from));
+  if (q.to) filters.push(lte(transactions.date, q.to));
 
   const rows = await db
     .select({
@@ -45,14 +46,13 @@ export async function GET(req: Request) {
     .groupBy(remittances.service)
     .orderBy(desc(sql<number>`SUM(${transactions.amount})`));
 
-  return ok(
-    rows.map((r) => ({
-      service: r.service,
-      count: Number(r.count),
-      totalSent: Number(r.totalSent),
-      totalFees: Number(r.totalFees),
-      avgFxRate: Number(r.avgFxRate),
-      totalDelivered: Number(r.totalDelivered),
-    })),
-  );
+  const items: RemittanceStatsRowDTO[] = rows.map((r) => ({
+    service: r.service,
+    count: Number(r.count),
+    totalSent: Number(r.totalSent),
+    totalFees: Number(r.totalFees),
+    avgFxRate: Number(r.avgFxRate),
+    totalDelivered: Number(r.totalDelivered),
+  }));
+  return ok(items satisfies RemittanceStatsRowDTO[]);
 }

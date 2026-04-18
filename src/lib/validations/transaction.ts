@@ -15,7 +15,10 @@ export const recurringFrequencyEnum = z.enum(["daily", "weekly", "monthly", "yea
 export const transactionCreateSchema = z
   .object({
     type: transactionTypeEnum,
-    amount: z.coerce.number().positive("Amount must be greater than 0"),
+    amount: z.coerce
+      .number()
+      .positive("Amount must be greater than 0")
+      .max(99999999999.99, "Amount exceeds maximum value"),
     categoryId: z.string().min(1, "Category is required"),
     description: z.string().min(1, "Description is required").max(200),
     notes: z.string().max(2000).optional().nullable(),
@@ -42,7 +45,11 @@ export const transactionCreateSchema = z
 export const transactionUpdateSchema = z
   .object({
     type: transactionTypeEnum.optional(),
-    amount: z.coerce.number().positive().optional(),
+    amount: z.coerce
+      .number()
+      .positive()
+      .max(99999999999.99, "Amount exceeds maximum value")
+      .optional(),
     categoryId: z.string().min(1).optional(),
     description: z.string().min(1).max(200).optional(),
     notes: z.string().max(2000).optional().nullable(),
@@ -69,11 +76,12 @@ export const transactionUpdateSchema = z
   });
 
 export const transactionBulkDeleteSchema = z.object({
-  ids: z.array(z.string()).min(1),
+  // max(500) prevents oversized requests from overwhelming the serverless DB connection
+  ids: z.array(z.string()).min(1).max(500),
 });
 
 export const transactionQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(25),
   categoryId: z.string().optional(),
   type: transactionTypeEnum.optional(),
@@ -85,12 +93,12 @@ export const transactionQuerySchema = z.object({
   // "card_payments" → type=transfer AND creditCardId IS NOT NULL.
   // "remittances"   → type=transfer AND a remittance row exists for the tx.
   shortcut: z.enum(["card_payments", "remittances"]).optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
-  search: z.string().optional(),
-  minAmount: z.coerce.number().optional(),
-  maxAmount: z.coerce.number().optional(),
-  tags: z.string().optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  search: z.string().max(200).optional(),
+  minAmount: z.coerce.number().max(99999999999.99).optional(),
+  maxAmount: z.coerce.number().max(99999999999.99).optional(),
+  tags: z.string().max(200).optional(),
   sort: z.enum(["date", "amount", "description", "createdAt"]).default("date"),
   order: z.enum(["asc", "desc"]).default("desc"),
 });
