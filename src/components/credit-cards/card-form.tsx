@@ -2,9 +2,11 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getStatementCycle, getNextDueDate } from "@/lib/credit-cards";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +46,26 @@ export function CardForm({
   const [paymentDueDay, setPaymentDueDay] = React.useState("28");
   const [minPct, setMinPct] = React.useState("2");
   const [pending, setPending] = React.useState(false);
+
+  const now = React.useMemo(() => new Date(), []);
+
+  const statementPreview = React.useMemo(() => {
+    const day = Number(statementDay);
+    if (!Number.isFinite(day) || day < 1 || day > 31) return null;
+    // Offset 0 = the cycle currently accruing. Its `end` is the next statement
+    // close date — that's what users want to see ("when does this cycle close?").
+    const cycle = getStatementCycle(now, day, 0);
+    return {
+      close: format(cycle.end, "MMM d"),
+      start: format(cycle.start, "MMM d"),
+    };
+  }, [statementDay, now]);
+
+  const duePreview = React.useMemo(() => {
+    const day = Number(paymentDueDay);
+    if (!Number.isFinite(day) || day < 1 || day > 31) return null;
+    return format(getNextDueDate(now, day), "MMM d");
+  }, [paymentDueDay, now]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -155,7 +177,13 @@ export function CardForm({
                 value={statementDay}
                 onChange={(e) => setStatementDay(e.target.value)}
               />
-              <p className="text-[11px] leading-[1.4] text-muted-foreground">Last day of cycle</p>
+              <p className="text-[11px] leading-[1.4] text-muted-foreground tabular-nums">
+                {statementPreview ? (
+                  <>Cycle closes <span className="font-[540] text-foreground">{statementPreview.close}</span></>
+                ) : (
+                  "Day of month (1–31)"
+                )}
+              </p>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="cc-due">Due day</Label>
@@ -168,7 +196,13 @@ export function CardForm({
                 value={paymentDueDay}
                 onChange={(e) => setPaymentDueDay(e.target.value)}
               />
-              <p className="text-[11px] leading-[1.4] text-muted-foreground">Payment deadline</p>
+              <p className="text-[11px] leading-[1.4] text-muted-foreground tabular-nums">
+                {duePreview ? (
+                  <>Next due <span className="font-[540] text-foreground">{duePreview}</span></>
+                ) : (
+                  "Day of month (1–31)"
+                )}
+              </p>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="cc-min">Min %</Label>
@@ -185,6 +219,9 @@ export function CardForm({
               <p className="text-[11px] leading-[1.4] text-muted-foreground">Of balance</p>
             </div>
           </div>
+          <p className="text-[11px] leading-[1.4] text-muted-foreground">
+            Days 29–31 automatically cap to the last day of short months (e.g. Feb 28).
+          </p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
