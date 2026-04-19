@@ -23,7 +23,7 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on mo
 - **Rich analytics** — trend charts, category breakdowns, spending heatmap, month-over-month comparison, payment-method distribution.
 - **Budgets with alerts** — per-category or overall, with progress bars that flip to warning/destructive when you exceed them.
 - **Loan tracking** — first-class transaction types for money lent, borrowed, and repaid, so loans don't pollute your income/expense totals.
-- **Credit cards with statement cycles** — multiple cards, computed balance and utilization, current/previous cycle breakdown by category, next-due-date tracking, and a one-click "Pay card" shortcut.
+- **Credit cards with real statement history** — multiple cards, computed balance and utilization, per-cycle breakdown by category, and a dedicated `credit_card_cycles` table that stores real close/due dates, issued statement balances, and payment progress. "Mark statement issued" flips a projected cycle into a real one; the "Pay card" shortcut auto-allocates payments to the right cycle; past-due cycles surface with a red dot on the card tile.
 - **International remittances** — USD→INR (or any corridor) with exchange rate and fee stored at full precision; stats cards break down total sent MTD, fees YTD, and avg rate by service so you can audit which provider gives you the best deal.
 - **CSV import / export** with column mapping, plus JSON backup for full portability.
 - **Recurring transactions** flagged with a badge so you can see your fixed costs at a glance.
@@ -167,7 +167,7 @@ src/
 │       ├── categories/       # CRUD
 │       ├── budgets/          # CRUD
 │       ├── analytics/        # summary, trends, category-breakdown, payment-methods
-│       ├── credit-cards/     # cards + cycle + pay shortcut
+│       ├── credit-cards/     # cards + cycle history + mark-issued + pay shortcut
 │       ├── remittances/      # list, stats, create (transactional)
 │       ├── export/           # CSV + JSON
 │       ├── import/           # CSV ingest with column mapping
@@ -259,13 +259,15 @@ Helpers live in `src/lib/api.ts`.
 | `POST` | `/api/budgets` | Create |
 | `PUT`  | `/api/budgets/:id` | Update |
 | `DELETE` | `/api/budgets/:id` | Delete |
-| `GET`  | `/api/credit-cards` | List cards with computed balance, utilization %, current cycle window, next due date, min payment, cycle spend (`?includeArchived=1` to include archived) |
-| `POST` | `/api/credit-cards` | Create a card (name, issuer, last4, limit, statementDay, paymentDueDay, minimumPaymentPercent) |
-| `GET`  | `/api/credit-cards/:id` | Single-card detail + balance + cycle |
-| `PATCH` | `/api/credit-cards/:id` | Update card metadata (including `isActive` to archive/unarchive) |
+| `GET`  | `/api/credit-cards` | List cards with computed balance, utilization %, min payment, cycle spend, plus the current cycle's close date, due date, projected/issued flag, and a `hasPastDueCycle` flag (`?includeArchived=1` to include archived) |
+| `POST` | `/api/credit-cards` | Create a card (name, issuer, last4, creditLimit, lastStatementCloseDate, paymentDueDate, optional statementBalance + minimumPayment, minimumPaymentPercent). Atomically inserts the card row and its first `credit_card_cycles` row — projected when balance fields are absent, issued when both are present. |
+| `GET`  | `/api/credit-cards/:id` | Single-card detail: balance, utilization, cycle aggregates, current cycle row fields (statementBalance, minimumPayment, isProjected). Returns 500 if the card has no cycle rows (data bug — should never happen post-backfill). |
+| `PATCH` | `/api/credit-cards/:id` | Update card metadata (including `isActive` to archive/unarchive). If `lastStatementCloseDate` + `paymentDueDate` are supplied, atomically upserts the current cycle row alongside the card update. |
 | `DELETE` | `/api/credit-cards/:id` | Archive (soft) by default; `?hard=1` hard-deletes only if no transactions reference the card |
-| `GET`  | `/api/credit-cards/:id/cycle?period=current\|previous\|N` | Cycle window + category breakdown + transactions |
-| `POST` | `/api/credit-cards/:id/pay` | Record a card repayment (creates a `transfer` transaction tagged to the card) |
+| `GET`  | `/api/credit-cards/:id/cycle?period=current\|previous\|N` | Cycle window (derived from `credit_card_cycles` rows, ordered by close date desc) + category breakdown + transactions in the window |
+| `GET`  | `/api/credit-cards/:id/cycles` | Full cycle history for the card (projected + issued), newest first |
+| `PATCH` | `/api/credit-cards/:id/cycles/:cycleId` | "Mark statement issued" — flips a projected cycle to real (statementBalance, minimumPayment required) and inserts the next projected cycle atomically |
+| `POST` | `/api/credit-cards/:id/pay` | Record a card repayment (creates a `transfer` transaction tagged to the card and allocates the payment to the right cycle in one atomic write) |
 | `GET`  | `/api/remittances` | Paginated list of international transfers with joined tx fields (filters: service, date range) |
 | `POST` | `/api/remittances` | Create a remittance — atomic: creates the `transfer` transaction and remittance row together |
 | `GET`  | `/api/remittances/:id` | Single remittance detail |
@@ -288,16 +290,28 @@ Helpers live in `src/lib/api.ts`.
 
 ```
 users
- ├─< categories        (per-user, type = expense | income | loan | transfer)
- ├─< transactions      (type = expense | income | transfer | loan_given | loan_taken | repayment_made | repayment_received;
- │                      optional credit_card_id FK for card-paid expenses and card repayments)
- ├─< budgets           (overall or per-category, period = weekly | monthly | yearly)
- ├─< credit_cards      (per-user, statement_day + payment_due_day as day-of-month ints, soft-archived via is_active)
- └─< remittances       (1:1 with a `type=transfer` transaction; stores fx_rate numeric(12,6), fee numeric(12,4),
-                        service enum, recipient_note — full-precision audit trail for international transfers)
+ ├─< categories          (per-user, type = expense | income | loan | transfer)
+ ├─< transactions        (type = expense | income | transfer | loan_given | loan_taken | repayment_made | repayment_received;
+ │                        optional credit_card_id FK for card-paid expenses and card repayments)
+ ├─< budgets             (overall or per-category, period = weekly | monthly | yearly)
+ ├─< credit_cards        (per-user, soft-archived via is_active; cycle dates live in credit_card_cycles)
+ │    └─< credit_card_cycles   (one row per billing cycle: cycle_close_date, payment_due_date (civil dates),
+ │                              statement_balance + minimum_payment (nullable until issued),
+ │                              amount_paid (auto-recomputed by allocation sweeps),
+ │                              is_projected (next accruing) vs real (issued))
+ └─< remittances         (1:1 with a `type=transfer` transaction; stores fx_rate numeric(12,6), fee numeric(12,4),
+                          service enum, recipient_note — full-precision audit trail for international transfers)
 ```
 
-Timestamps use `timestamp with time zone` (indexable, timezone-aware). Amounts are `double precision` by default; `remittances.fx_rate` and `remittances.fee` use `numeric()` for exact decimal precision. `transactions.credit_card_id` is nullable and cascades to `SET NULL` on card delete, so archiving/deleting a card never orphans history. `remittances.transaction_id` is `UNIQUE` + `ON DELETE CASCADE`, making the 1:1 relationship structural. The schema lives in `src/lib/db/schema.ts`.
+Amounts use `numeric(14,2)` for exact decimal precision; `remittances.fx_rate` uses `numeric(12,6)` and `remittances.fee` uses `numeric(12,4)` for rate/fee precision. Transaction dates are stored as civil `date` (no timezone); audit timestamps use `timestamp with time zone` (indexable, timezone-aware) with an `updated_at` trigger defined in migration `0004`. `transactions.credit_card_id` is nullable and cascades to `SET NULL` on card delete, so archiving/deleting a card never orphans history. `credit_card_cycles.card_id` cascades to `DELETE` — cycles only exist while their card does. `remittances.transaction_id` is `UNIQUE` + `ON DELETE CASCADE`, making the 1:1 relationship structural. The schema lives in [src/lib/db/schema.ts](src/lib/db/schema.ts).
+
+### Credit-card cycles & payment allocation
+
+`credit_card_cycles` is the source of truth for every statement date, balance, minimum, and payment-progress number. Each card has exactly one **projected** cycle (the one currently accruing) plus any number of **issued** (real) cycles behind it. Card POST writes the card + its first projected cycle atomically; every "current cycle" read selects the row with the newest `cycle_close_date`.
+
+Payments on a card (type=transfer + creditCardId) auto-allocate to a cycle via the half-open interval `(cycle_close_date, payment_due_date]`. The `amount_paid` column is kept in sync by `POST /api/credit-cards/:id/pay` (atomic batch), and by every other route that creates/edits/deletes a card-tagged transfer (recomputed full-sweep after the write). The pure allocation rule lives in [`src/lib/credit-cards.ts::allocateCycleForPayment`](src/lib/credit-cards.ts); the DB-touching sweep lives in [`src/lib/credit-card-allocation.ts`](src/lib/credit-card-allocation.ts).
+
+The "Mark statement issued" flow (PATCH `/api/credit-cards/:id/cycles/:cycleId`) is the only path that promotes a projected cycle to a real one — it flips `is_projected` false, stamps `statement_balance` + `minimum_payment`, and inserts the next projected cycle in a single atomic write.
 
 ---
 
@@ -370,13 +384,13 @@ When a feature ships that adds new schema AND depends on seeded rows for existin
 
    Idempotent — every row is gated by a `(userId, name)` existence check. New users created after this deploy pick up the categories automatically via the existing `seedDefaultCategoriesForUser()` call in registration.
 
-3. **Backfill credit-card cycle history.** The `credit_card_cycles` table (added in migration `0006`) stores one row per billing cycle, replacing the brittle day-of-month integer model on `credit_cards`. Cards that existed before this migration need one projected cycle row each — run:
+3. **(Historical) Credit-card cycle-history migration.** The `credit_card_cycles` table was introduced in migration `0006` and the legacy `statement_day` / `payment_due_day` integer columns on `credit_cards` were dropped in migration `0007`. For any existing Neon/Postgres database that predates these changes, the migration was rolled out in five phases:
 
-   ```bash
-   DATABASE_URL="postgres://..." pnpm tsx scripts/backfill-credit-card-cycles.ts
-   ```
+   - **0006** creates `credit_card_cycles`.
+   - `scripts/backfill-credit-card-cycles.ts` runs ONCE to seed a projected cycle row for every existing card (uses the then-still-present day-of-month integers).
+   - **0007** drops `statement_day` / `payment_due_day`.
 
-   Idempotent — gated by a per-card existence check. The script also warns + adjusts any card whose `(statement_day, payment_due_day)` integers produce an out-of-range grace period (< 10 or > 40 days), a sign the user configured the due day assuming it refers to *next* month's calendar day.
+   Fresh databases only need `pnpm db:migrate` — all seven migrations apply in order and every new card (via POST `/api/credit-cards`) inserts its own cycle row atomically. The backfill script is kept in `scripts/backfill-credit-card-cycles.ts` with a `@ts-nocheck` marker for historical reference; it cannot re-run against the current schema.
 
 **No new environment variables** are required for the credit-cards + remittances feature. The existing `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `AUTH_TRUST_HOST` set cover everything.
 
