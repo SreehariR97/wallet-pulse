@@ -52,7 +52,7 @@ export function SummaryCards({ data, currency, loading }: { data: SummaryData | 
               "inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-[700] tracking-[-0.005em]",
               netPositive ? "bg-accent text-accent-foreground" : "bg-destructive/15 text-destructive"
             )}>
-              {netPositive ? "+" : "−"} this month
+              {netPositive ? "Net +" : "Net −"}
             </span>
           </div>
           {loading ? (

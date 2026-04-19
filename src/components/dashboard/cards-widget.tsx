@@ -77,7 +77,11 @@ export function CardsWidget({
                     </span>
                   </div>
                   <div className="mt-2">
-                    <Progress value={util} indicatorClassName={utilBar(util)} className="h-1.5" />
+                    {util > 0 ? (
+                      <Progress value={util} indicatorClassName={utilBar(util)} className="h-1.5" />
+                    ) : (
+                      <div className="h-1.5" />
+                    )}
                   </div>
                 </CardContent>
               </Card>

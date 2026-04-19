@@ -299,9 +299,6 @@ export function CardDetailView({
               <div className="mt-1 text-[17px] font-[540] tabular-nums">
                 {formatUtcDay(card.currentCycleEnd)}
               </div>
-              <div className="mt-0.5 text-[12px] font-[460] text-muted-foreground">
-                Statement day {(card as unknown as { statementDay: number }).statementDay}
-              </div>
             </div>
             <div className="md:border-l md:border-border/60 md:pl-5">
               <div className="text-[10px] font-[600] uppercase tracking-[0.08em] text-muted-foreground">

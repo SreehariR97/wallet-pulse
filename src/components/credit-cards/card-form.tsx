@@ -217,7 +217,7 @@ export function CardForm({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label htmlFor="cc-close">Last statement closing date</Label>
+              <Label htmlFor="cc-close">Last cycle closed</Label>
               <Input
                 id="cc-close"
                 type="date"

@@ -136,7 +136,11 @@ export function CardTile({
           </div>
 
           <div className="mt-3">
-            <Progress value={util} indicatorClassName={utilBar(util)} />
+            {util > 0 ? (
+              <Progress value={util} indicatorClassName={utilBar(util)} />
+            ) : (
+              <div className="h-2" />
+            )}
             <div className="mt-1.5 flex items-center justify-between text-[12px] font-[460] text-muted-foreground tabular-nums">
               <span>{util.toFixed(0)}% utilization</span>
               <span>

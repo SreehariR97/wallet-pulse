@@ -150,7 +150,7 @@ export function RemittancesView({ currency }: { currency: string }) {
           description="Track international money transfers — USD → INR with exchange rate and fees, so you can audit which service gives you the best deal over time."
           action={
             <Button onClick={openNew}>
-              <Plus className="h-4 w-4" /> Record a transfer
+              <Plus className="h-4 w-4" /> New remittance
             </Button>
           }
         />
