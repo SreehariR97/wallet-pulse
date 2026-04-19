@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter_Tight } from "next/font/google";
 import { Toaster } from "sonner";
-import { ThemeProvider } from "@/components/theme-provider";
 import { SessionProvider } from "@/components/session-provider";
 import "@/styles/globals.css";
 
@@ -21,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning className={interTight.variable}>
       <body className="min-h-screen bg-background font-sans antialiased">
         <SessionProvider>
-          <ThemeProvider>{children}</ThemeProvider>
+          {children}
         </SessionProvider>
         <Toaster richColors position="top-right" />
       </body>
