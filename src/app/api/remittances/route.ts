@@ -8,7 +8,9 @@
  */
 import { randomUUID } from "crypto";
 import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { db } from "@/lib/db";
+import * as schema from "@/lib/db/schema";
 import { categories, remittances, transactions } from "@/lib/db/schema";
 import {
   remittanceCreateSchema,
@@ -130,47 +132,58 @@ export async function POST(req: Request) {
   const txId = randomUUID();
   const remitId = randomUUID();
 
-  // Atomic: both rows commit or neither. Non-interactive on Neon HTTP — we
-  // pre-generate IDs so we don't need to read one insert to write the next.
-  // Each insert `.returning()` so we can shape the response without a
-  // follow-up JOIN select.
+  const txValues = {
+    id: txId,
+    userId: auth.userId,
+    categoryId: cat.id,
+    type: "transfer" as const,
+    amount: String(r.amount),
+    currency: r.fromCurrency,
+    description: r.description,
+    notes: r.notes ?? null,
+    date: r.date,
+    paymentMethod: r.paymentMethod,
+    isRecurring: r.isRecurring,
+    recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
+    tags: r.tags ?? null,
+  };
+  const remValues = {
+    id: remitId,
+    transactionId: txId,
+    userId: auth.userId,
+    fromCurrency: r.fromCurrency,
+    toCurrency: r.toCurrency,
+    // numeric columns take strings in Drizzle to preserve precision.
+    fxRate: r.fxRate.toString(),
+    fee: r.fee.toString(),
+    service: r.service,
+    recipientNote: r.recipientNote ?? null,
+  };
+
   try {
-    const { tx, rem } = await db.transaction(async (trx) => {
-      const [txRow] = await trx
-        .insert(transactions)
-        .values({
-          id: txId,
-          userId: auth.userId,
-          categoryId: cat.id,
-          type: "transfer",
-          amount: String(r.amount),
-          currency: r.fromCurrency,
-          description: r.description,
-          notes: r.notes ?? null,
-          date: r.date,
-          paymentMethod: r.paymentMethod,
-          isRecurring: r.isRecurring,
-          recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
-          tags: r.tags ?? null,
-        })
-        .returning();
-      const [remRow] = await trx
-        .insert(remittances)
-        .values({
-          id: remitId,
-          transactionId: txId,
-          userId: auth.userId,
-          fromCurrency: r.fromCurrency,
-          toCurrency: r.toCurrency,
-          // numeric columns take strings in Drizzle to preserve precision.
-          fxRate: r.fxRate.toString(),
-          fee: r.fee.toString(),
-          service: r.service,
-          recipientNote: r.recipientNote ?? null,
-        })
-        .returning();
-      return { tx: txRow, rem: remRow };
-    });
+    // neon-http doesn't support db.transaction; use batch (atomic server-side
+    // via Neon's implicit transaction). pg supports both — keep transaction for
+    // local dev / self-host.
+    let tx: typeof transactions.$inferSelect;
+    let rem: typeof remittances.$inferSelect;
+    const maybeBatch = db as { batch?: unknown };
+    if (typeof maybeBatch.batch === "function") {
+      const neonDb = db as NeonHttpDatabase<typeof schema>;
+      const [txRows, remRows] = await neonDb.batch([
+        neonDb.insert(transactions).values(txValues).returning(),
+        neonDb.insert(remittances).values(remValues).returning(),
+      ]);
+      tx = txRows[0];
+      rem = remRows[0];
+    } else {
+      const result = await db.transaction(async (trx) => {
+        const [txRow] = await trx.insert(transactions).values(txValues).returning();
+        const [remRow] = await trx.insert(remittances).values(remValues).returning();
+        return { tx: txRow, rem: remRow };
+      });
+      tx = result.tx;
+      rem = result.rem;
+    }
 
     return ok(
       {
