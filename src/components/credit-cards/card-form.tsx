@@ -2,11 +2,9 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getStatementCycle, getNextDueDate } from "@/lib/credit-cards";
 import {
   Dialog,
   DialogContent,
@@ -22,9 +20,48 @@ export interface CardFormInitial {
   issuer: string;
   last4: string | null;
   creditLimit: number;
+  // Phase 2 keeps the integer-based DTO so the GET route + card-tile UI can
+  // still read these. Phase 5 drops them once all callers are moved over to
+  // cycle rows.
   statementDay: number;
   paymentDueDay: number;
   minimumPaymentPercent: number;
+}
+
+// Seed date pickers for existing cards by re-deriving a plausible date from
+// the legacy day-of-month integer. This is a one-way derivation — the picker
+// loses the actual last-saved date across edits until Phase 3 surfaces cycle
+// history in the DTO. Known limitation, acceptable for Phase 2.
+function cappedDay(year: number, monthIndex: number, day: number): number {
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  return Math.min(day, lastDay);
+}
+function formatLocal(y: number, m: number, d: number): string {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+function mostRecentOccurrence(day: number): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const today = now.getDate();
+  const capped = cappedDay(y, m, day);
+  if (today >= capped) return formatLocal(y, m, capped);
+  const prev = new Date(y, m - 1, 1);
+  const py = prev.getFullYear();
+  const pm = prev.getMonth();
+  return formatLocal(py, pm, cappedDay(py, pm, day));
+}
+function nextOccurrence(day: number): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const today = now.getDate();
+  const capped = cappedDay(y, m, day);
+  if (today <= capped) return formatLocal(y, m, capped);
+  const next = new Date(y, m + 1, 1);
+  const ny = next.getFullYear();
+  const nm = next.getMonth();
+  return formatLocal(ny, nm, cappedDay(ny, nm, day));
 }
 
 export function CardForm({
@@ -42,30 +79,12 @@ export function CardForm({
   const [issuer, setIssuer] = React.useState("");
   const [last4, setLast4] = React.useState("");
   const [creditLimit, setCreditLimit] = React.useState("");
-  const [statementDay, setStatementDay] = React.useState("1");
-  const [paymentDueDay, setPaymentDueDay] = React.useState("28");
+  const [lastStatementCloseDate, setLastStatementCloseDate] = React.useState("");
+  const [paymentDueDate, setPaymentDueDate] = React.useState("");
+  const [statementBalance, setStatementBalance] = React.useState("");
+  const [minimumPayment, setMinimumPayment] = React.useState("");
   const [minPct, setMinPct] = React.useState("2");
   const [pending, setPending] = React.useState(false);
-
-  const now = React.useMemo(() => new Date(), []);
-
-  const statementPreview = React.useMemo(() => {
-    const day = Number(statementDay);
-    if (!Number.isFinite(day) || day < 1 || day > 31) return null;
-    // Offset 0 = the cycle currently accruing. Its `end` is the next statement
-    // close date — that's what users want to see ("when does this cycle close?").
-    const cycle = getStatementCycle(now, day, 0);
-    return {
-      close: format(cycle.end, "MMM d"),
-      start: format(cycle.start, "MMM d"),
-    };
-  }, [statementDay, now]);
-
-  const duePreview = React.useMemo(() => {
-    const day = Number(paymentDueDay);
-    if (!Number.isFinite(day) || day < 1 || day > 31) return null;
-    return format(getNextDueDate(now, day), "MMM d");
-  }, [paymentDueDay, now]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -73,23 +92,54 @@ export function CardForm({
     setIssuer(initial?.issuer ?? "");
     setLast4(initial?.last4 ?? "");
     setCreditLimit(initial ? String(initial.creditLimit) : "");
-    setStatementDay(String(initial?.statementDay ?? 1));
-    setPaymentDueDay(String(initial?.paymentDueDay ?? 28));
+    setLastStatementCloseDate(
+      initial ? mostRecentOccurrence(initial.statementDay) : "",
+    );
+    setPaymentDueDate(initial ? nextOccurrence(initial.paymentDueDay) : "");
+    // Balance + min never round-trip from the GET DTO in Phase 2 — always
+    // blank on edit. Phase 3 surfaces the saved cycle values.
+    setStatementBalance("");
+    setMinimumPayment("");
     setMinPct(String(initial?.minimumPaymentPercent ?? 2));
   }, [open, initial]);
+
+  const gracePeriodDays = React.useMemo(() => {
+    if (!lastStatementCloseDate || !paymentDueDate) return null;
+    if (paymentDueDate <= lastStatementCloseDate) return null;
+    const a = new Date(lastStatementCloseDate + "T00:00:00Z").getTime();
+    const b = new Date(paymentDueDate + "T00:00:00Z").getTime();
+    return Math.round((b - a) / 86400000);
+  }, [lastStatementCloseDate, paymentDueDate]);
+
+  const graceWarning = React.useMemo(() => {
+    if (gracePeriodDays == null) return null;
+    if (gracePeriodDays < 21)
+      return `Unusually short grace period (${gracePeriodDays} days). Most cards give at least 21 — double-check the dates.`;
+    if (gracePeriodDays > 35)
+      return `Unusually long grace period (${gracePeriodDays} days). Most cards give 21–28 — double-check the dates.`;
+    return null;
+  }, [gracePeriodDays]);
+
+  const datesValid =
+    !!lastStatementCloseDate &&
+    !!paymentDueDate &&
+    paymentDueDate > lastStatementCloseDate;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
-    const payload = {
+    const payload: Record<string, unknown> = {
       name,
       issuer,
       last4: last4.trim() ? last4.trim() : null,
       creditLimit: Number(creditLimit),
-      statementDay: Number(statementDay),
-      paymentDueDay: Number(paymentDueDay),
       minimumPaymentPercent: Number(minPct),
+      lastStatementCloseDate,
+      paymentDueDate,
     };
+    if (statementBalance.trim()) payload.statementBalance = Number(statementBalance);
+    if (minimumPayment.trim()) payload.minimumPayment = Number(minimumPayment);
+
     const res = await fetch(initial ? `/api/credit-cards/${initial.id}` : "/api/credit-cards", {
       method: initial ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -165,62 +215,84 @@ export function CardForm({
               onChange={(e) => setCreditLimit(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label htmlFor="cc-stmt">Statement day</Label>
+              <Label htmlFor="cc-close">Last statement closing date</Label>
               <Input
-                id="cc-stmt"
-                type="number"
-                min="1"
-                max="31"
+                id="cc-close"
+                type="date"
                 required
-                value={statementDay}
-                onChange={(e) => setStatementDay(e.target.value)}
+                value={lastStatementCloseDate}
+                onChange={(e) => setLastStatementCloseDate(e.target.value)}
               />
-              <p className="text-[11px] leading-[1.4] text-muted-foreground tabular-nums">
-                {statementPreview ? (
-                  <>Cycle closes <span className="font-[540] text-foreground">{statementPreview.close}</span></>
-                ) : (
-                  "Day of month (1–31)"
-                )}
-              </p>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="cc-due">Due day</Label>
+              <Label htmlFor="cc-due-date">Payment due date</Label>
               <Input
-                id="cc-due"
-                type="number"
-                min="1"
-                max="31"
+                id="cc-due-date"
+                type="date"
                 required
-                value={paymentDueDay}
-                onChange={(e) => setPaymentDueDay(e.target.value)}
+                value={paymentDueDate}
+                onChange={(e) => setPaymentDueDate(e.target.value)}
               />
               <p className="text-[11px] leading-[1.4] text-muted-foreground tabular-nums">
-                {duePreview ? (
-                  <>Next due <span className="font-[540] text-foreground">{duePreview}</span></>
-                ) : (
-                  "Day of month (1–31)"
-                )}
+                {gracePeriodDays != null
+                  ? `${gracePeriodDays}-day grace period`
+                  : "Pick both dates"}
               </p>
             </div>
+          </div>
+          {graceWarning && (
+            <p className="text-[11px] leading-[1.4] text-amber-500">{graceWarning}</p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label htmlFor="cc-min">Min %</Label>
+              <Label htmlFor="cc-stmt-bal">Statement balance (optional)</Label>
               <Input
-                id="cc-min"
+                id="cc-stmt-bal"
                 type="number"
+                step="0.01"
                 min="0"
-                max="100"
-                step="0.1"
-                required
-                value={minPct}
-                onChange={(e) => setMinPct(e.target.value)}
+                placeholder="$"
+                value={statementBalance}
+                onChange={(e) => setStatementBalance(e.target.value)}
               />
-              <p className="text-[11px] leading-[1.4] text-muted-foreground">Of balance</p>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="cc-min-pay">Minimum payment (optional)</Label>
+              <Input
+                id="cc-min-pay"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="$"
+                value={minimumPayment}
+                onChange={(e) => setMinimumPayment(e.target.value)}
+              />
             </div>
           </div>
           <p className="text-[11px] leading-[1.4] text-muted-foreground">
-            Days 29–31 automatically cap to the last day of short months (e.g. Feb 28).
+            Optional — fill both in if you want to track what this statement owes.
+          </p>
+          <div className="grid gap-1.5">
+            <Label htmlFor="cc-min-pct">Minimum payment %</Label>
+            <Input
+              id="cc-min-pct"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              required
+              value={minPct}
+              onChange={(e) => setMinPct(e.target.value)}
+            />
+            <p className="text-[11px] leading-[1.4] text-muted-foreground">
+              Fallback if the minimum payment above is left blank.
+            </p>
+          </div>
+          <p className="text-[11px] leading-[1.4] text-muted-foreground">
+            These dates come from your most recent statement. After the next statement
+            arrives, update them from the card detail page.
           </p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -228,7 +300,7 @@ export function CardForm({
             </Button>
             <Button
               type="submit"
-              disabled={pending || !name || !issuer || !creditLimit}
+              disabled={pending || !name || !issuer || !creditLimit || !datesValid}
             >
               {pending && <Loader2 className="h-4 w-4 animate-spin" />}
               {initial ? "Save" : "Add card"}

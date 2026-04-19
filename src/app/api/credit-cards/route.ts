@@ -1,9 +1,11 @@
 import { randomUUID } from "crypto";
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { db } from "@/lib/db";
-import { creditCards, transactions } from "@/lib/db/schema";
+import * as schema from "@/lib/db/schema";
+import { creditCards, creditCardCycles, transactions } from "@/lib/db/schema";
 import { creditCardCreateSchema } from "@/lib/validations/credit-card";
-import { ok, zodFail, requireUser } from "@/lib/api";
+import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { getStatementCycle, getNextDueDate } from "@/lib/credit-cards";
 import type { CreditCardDTO, CreditCardListItemDTO } from "@/types";
 
@@ -124,21 +126,84 @@ export async function POST(req: Request) {
   if (!parsed.success) return zodFail(parsed.error);
   const c = parsed.data;
 
-  const id = randomUUID();
-  const [row] = await db
-    .insert(creditCards)
-    .values({
-      id,
+  // Derive the day-of-month integers from the picked dates. Phase 2 keeps
+  // credit_cards.statement_day / payment_due_day populated so the existing
+  // GET handler and card-tile rendering (which still read integers) work
+  // unchanged. Both columns are dropped in Phase 5.
+  const statementDay = Number(c.lastStatementCloseDate.slice(8, 10));
+  const paymentDueDay = Number(c.paymentDueDate.slice(8, 10));
+
+  const cardId = randomUUID();
+  const cycleId = randomUUID();
+  const hasBalance = c.statementBalance !== undefined;
+  const hasMinPayment = c.minimumPayment !== undefined;
+
+  const cardValues = {
+    id: cardId,
+    userId: auth.userId,
+    name: c.name,
+    issuer: c.issuer,
+    last4: c.last4 ?? null,
+    creditLimit: String(c.creditLimit),
+    statementDay,
+    paymentDueDay,
+    minimumPaymentPercent: c.minimumPaymentPercent,
+    sortOrder: c.sortOrder,
+  };
+  const cycleValues = {
+    id: cycleId,
+    cardId,
+    userId: auth.userId,
+    cycleCloseDate: c.lastStatementCloseDate,
+    paymentDueDate: c.paymentDueDate,
+    statementBalance: hasBalance ? String(c.statementBalance) : null,
+    minimumPayment: hasMinPayment ? String(c.minimumPayment) : null,
+    // Real cycle only when BOTH balance fields are present — otherwise it's
+    // still a projected framework.
+    isProjected: !(hasBalance && hasMinPayment),
+  };
+
+  try {
+    // neon-http doesn't support db.transaction; use batch (atomic server-side
+    // via Neon's implicit transaction). pg supports both — keep transaction
+    // for local dev / self-host. See CLAUDE.md "atomic multi-statement writes".
+    let row: typeof creditCards.$inferSelect;
+    const maybeBatch = db as { batch?: unknown };
+    if (typeof maybeBatch.batch === "function") {
+      const neonDb = db as NeonHttpDatabase<typeof schema>;
+      const [cardRows] = await neonDb.batch([
+        neonDb.insert(creditCards).values(cardValues).returning(),
+        neonDb.insert(creditCardCycles).values(cycleValues),
+      ]);
+      row = cardRows[0];
+    } else {
+      const result = await db.transaction(async (trx) => {
+        const [cardRow] = await trx.insert(creditCards).values(cardValues).returning();
+        await trx.insert(creditCardCycles).values(cycleValues);
+        return cardRow;
+      });
+      row = result;
+    }
+    return ok(toCreditCardDTO(row) satisfies CreditCardDTO, { created: true });
+  } catch (err) {
+    console.error("[POST /api/credit-cards] insert failed", {
       userId: auth.userId,
-      name: c.name,
-      issuer: c.issuer,
-      last4: c.last4 ?? null,
-      creditLimit: String(c.creditLimit),
-      statementDay: c.statementDay,
-      paymentDueDay: c.paymentDueDay,
-      minimumPaymentPercent: c.minimumPaymentPercent,
-      sortOrder: c.sortOrder,
-    })
-    .returning();
-  return ok(toCreditCardDTO(row) satisfies CreditCardDTO, { created: true });
+      payload: {
+        cardId,
+        cycleId,
+        name: c.name,
+        issuer: c.issuer,
+        lastStatementCloseDate: c.lastStatementCloseDate,
+        paymentDueDate: c.paymentDueDate,
+        hasBalance,
+        hasMinPayment,
+      },
+      error:
+        err instanceof Error
+          ? { name: err.name, message: err.message, stack: err.stack }
+          : err,
+    });
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return fail(500, `Credit card insert failed: ${message}`);
+  }
 }
