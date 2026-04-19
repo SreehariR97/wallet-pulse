@@ -199,6 +199,39 @@ export function CardDetailView({
     ? Math.max(0, Math.min(100, card.utilizationPercent))
     : 0;
 
+  // Phase 4: compact payoff-status chip for the header. Uses the current
+  // cycle row (matched on id) from the already-fetched cycle history; no
+  // extra round-trip needed. Projected cycles don't emit a chip because
+  // "carrying/paid" questions are meaningless until the statement is issued.
+  const currentCycleRow = React.useMemo(
+    () => cycleRows.find((r) => r.id === card?.currentCycleId) ?? null,
+    [cycleRows, card?.currentCycleId],
+  );
+  const headerStatus = React.useMemo((): {
+    label: string;
+    tone: "success" | "destructive" | "muted";
+  } | null => {
+    if (!card || !currentCycleRow || currentCycleRow.isProjected) return null;
+    if (currentCycleRow.statementBalance === null) return null;
+    const remaining = Math.max(
+      0,
+      currentCycleRow.statementBalance - currentCycleRow.amountPaid,
+    );
+    if (remaining < 0.005) return { label: "Paid in full", tone: "success" };
+    const today = new Date();
+    const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}-${String(today.getUTCDate()).padStart(2, "0")}`;
+    if (todayStr > currentCycleRow.paymentDueDate) {
+      return {
+        label: `${formatCurrency(remaining, currency)} past due`,
+        tone: "destructive",
+      };
+    }
+    return {
+      label: `Carrying ${formatCurrency(remaining, currency)}`,
+      tone: "muted",
+    };
+  }, [card, currentCycleRow, currency]);
+
   const activeRange = cycle
     ? { start: new Date(cycle.start), end: new Date(cycle.end) }
     : undefined;
@@ -270,6 +303,19 @@ export function CardDetailView({
             {!card.isActive && (
               <span className="inline-flex items-center rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-muted-foreground">
                 Archived
+              </span>
+            )}
+            {headerStatus && (
+              <span
+                className={
+                  headerStatus.tone === "success"
+                    ? "inline-flex items-center rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-emerald-600 dark:text-emerald-400"
+                    : headerStatus.tone === "destructive"
+                      ? "inline-flex items-center rounded-md bg-destructive/15 px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-destructive"
+                      : "inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-muted-foreground"
+                }
+              >
+                {headerStatus.label}
               </span>
             )}
           </span>

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { transactions, categories, creditCards, remittances } from "@/lib/db/schema";
 import { transactionCreateSchema, transactionQuerySchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import { recomputeCardCycleAllocations } from "@/lib/credit-card-allocation";
 import type { TransactionDTO, TransactionListItem } from "@/types";
 
 function toTransactionDTO(t: typeof transactions.$inferSelect): TransactionDTO {
@@ -194,5 +195,13 @@ export async function POST(req: Request) {
       tags: t.tags ?? null,
     })
     .returning();
+
+  // Phase 4: generic POST can create a card transfer (not just the
+  // /pay shortcut). Recompute allocations so the new payment lands on a
+  // cycle immediately. No-op for expenses / income / other transfer types.
+  if (row.type === "transfer" && row.creditCardId) {
+    await recomputeCardCycleAllocations(db, auth.userId, row.creditCardId);
+  }
+
   return NextResponse.json({ data: toTransactionDTO(row) satisfies TransactionDTO }, { status: 201 });
 }

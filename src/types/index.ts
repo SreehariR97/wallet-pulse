@@ -168,6 +168,10 @@ export interface CreditCardListItemDTO extends CreditCardDTO {
   cycleSpend: number;
   nextDueDate: string;
   minPaymentEstimate: number;
+  /** Phase 4: any non-projected cycle whose paymentDueDate has passed and
+   *  where amountPaid < statementBalance. Surfaced as a red dot on the card
+   *  tile so users can spot trouble without opening the detail view. */
+  hasPastDueCycle: boolean;
 }
 
 /** Detail endpoint exposes the expense/payment split separately from balance.

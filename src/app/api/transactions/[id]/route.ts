@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { transactions, categories, creditCards, remittances } from "@/lib/db/schema";
 import { transactionUpdateSchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import { recomputeCardCycleAllocations } from "@/lib/credit-card-allocation";
 import type { TransactionDTO, DeletedIdDTO } from "@/types";
 
 type TransactionPatch = Partial<
@@ -81,14 +82,17 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (!card) return fail(400, "Invalid credit card");
   }
 
-  // Coherence: if the patch moves paymentMethod away from credit_card while
-  // creditCardId is still set (either in the existing row or the incoming
-  // patch), reject. Callers can null creditCardId explicitly if they want
-  // to sever the link.
+  // Coherence: for a card-paid expense, paymentMethod must remain
+  // credit_card while creditCardId is set. Transfers to a card (card
+  // repayments) intentionally use paymentMethod=bank_transfer with
+  // creditCardId set — that's the pay-route shape — so the check applies
+  // only to type=expense. Callers can null creditCardId explicitly if they
+  // want to sever the link.
   const finalCard = t.creditCardId === undefined ? existing.creditCardId : t.creditCardId;
   const finalMethod = t.paymentMethod ?? existing.paymentMethod;
-  if (finalCard && finalMethod !== "credit_card") {
-    return fail(400, "paymentMethod must be credit_card when creditCardId is set");
+  const finalType = t.type ?? existing.type;
+  if (finalCard && finalType === "expense" && finalMethod !== "credit_card") {
+    return fail(400, "paymentMethod must be credit_card when creditCardId is set on an expense");
   }
 
   // Invariant: a remittance row always points to a type=transfer transaction.
@@ -124,6 +128,28 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (t.tags !== undefined) patch.tags = t.tags;
 
   const [row] = await db.update(transactions).set(patch).where(eq(transactions.id, params.id)).returning();
+
+  // Phase 4: if the edit touches card-allocation inputs on a transfer
+  // (date/amount/creditCardId), sweep the affected card(s). Changing the
+  // linked card requires sweeping both the old and the new card so cycles
+  // on either side stay consistent. Type flips into/out of transfer also
+  // count — a new transfer needs allocation, an ex-transfer needs removal.
+  const cardsToSweep = new Set<string>();
+  const oldWasTransfer = existing.type === "transfer";
+  const newIsTransfer = row.type === "transfer";
+  const allocationFieldChanged =
+    existing.date !== row.date ||
+    existing.amount !== row.amount ||
+    existing.creditCardId !== row.creditCardId ||
+    oldWasTransfer !== newIsTransfer;
+  if (allocationFieldChanged) {
+    if (oldWasTransfer && existing.creditCardId) cardsToSweep.add(existing.creditCardId);
+    if (newIsTransfer && row.creditCardId) cardsToSweep.add(row.creditCardId);
+  }
+  for (const cardId of cardsToSweep) {
+    await recomputeCardCycleAllocations(db, auth.userId, cardId);
+  }
+
   return ok(toTransactionDTO(row) satisfies TransactionDTO);
 }
 
@@ -133,5 +159,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const existing = await assertOwned(params.id, auth.userId);
   if (!existing) return fail(404, "Transaction not found");
   await db.delete(transactions).where(eq(transactions.id, params.id));
+  if (existing.type === "transfer" && existing.creditCardId) {
+    await recomputeCardCycleAllocations(db, auth.userId, existing.creditCardId);
+  }
   return ok({ id: params.id } satisfies DeletedIdDTO);
 }

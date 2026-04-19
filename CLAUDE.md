@@ -107,6 +107,17 @@ Pre-generate UUIDs client-side so inserts don't depend on each other's results �
 
 This pattern was added after two routes (remittances POST and PATCH) shipped with `db.transaction()` and broke on production while local dev (pg driver) kept working. If you add a new route with multi-statement atomic writes, use the same dispatch.
 
+### Credit-card cycle allocation
+
+Payments on a credit card (type=transfer + creditCardId) are allocated to a cycle row in `credit_card_cycles` via the half-open interval `(cycleCloseDate, paymentDueDate]`. The `amount_paid` column is kept in sync by:
+
+- `POST /api/credit-cards/:id/pay` — atomic batch of `[INSERT tx, ...UPDATE cycles]`
+- `POST /api/transactions` — recomputes after an inserted transfer
+- `PUT /api/transactions/:id` — recomputes after any allocation-affecting edit (date, amount, creditCardId, or type flip into/out of transfer); sweeps old AND new card when the link changes
+- `DELETE /api/transactions/:id` — recomputes after removing a transfer
+
+The pure allocation rule lives in `src/lib/credit-cards.ts::allocateCycleForPayment`. The DB-touching `recomputeCardCycleAllocations` (in `src/lib/credit-card-allocation.ts`) is a self-healing full sweep — it re-derives every cycle's `amount_paid` from scratch each time, so an occasional divergence self-corrects on the next write. CSV import and bulk-delete intentionally do NOT recompute (cost/complexity trade-off); the next pay or transaction edit sweeps them in.
+
 ## Database schema
 
 Tables: `users`, `categories` (per-user), `transactions`, `budgets`. Timestamps stored as `timestamp with time zone`. Amounts as `double precision`. See `src/lib/db/schema.ts`.

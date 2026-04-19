@@ -33,11 +33,15 @@ export const transactionCreateSchema = z
     tags: z.string().max(500).optional().nullable(),
   })
   .superRefine((val, ctx) => {
-    if (val.creditCardId && val.paymentMethod !== "credit_card") {
+    // For expenses on a card, paymentMethod must be credit_card. Transfers
+    // TO a card (card repayments) legitimately use paymentMethod=bank_transfer
+    // with creditCardId set — that's the pay-route shape — so the rule is
+    // scoped to type=expense.
+    if (val.creditCardId && val.type === "expense" && val.paymentMethod !== "credit_card") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["paymentMethod"],
-        message: "paymentMethod must be credit_card when creditCardId is set",
+        message: "paymentMethod must be credit_card when creditCardId is set on an expense",
       });
     }
   });
@@ -61,16 +65,21 @@ export const transactionUpdateSchema = z
     tags: z.string().max(500).optional().nullable(),
   })
   .superRefine((val, ctx) => {
-    // Only enforce when both fields are present in the patch — callers
-    // that clear creditCardId alone (pass null) don't need to also pass
-    // paymentMethod. If creditCardId is being set to a card id, a
-    // paymentMethod in the same patch must be credit_card (or absent, in
-    // which case the existing value is trusted — routes re-check if needed).
-    if (val.creditCardId && val.paymentMethod && val.paymentMethod !== "credit_card") {
+    // Only enforce when both fields are present in the patch AND the type
+    // is (or becomes) expense. Transfers TO a card (card repayments) keep
+    // paymentMethod=bank_transfer while creditCardId is set; the route's
+    // runtime coherence check enforces the expense-specific rule using
+    // the existing row's type when not supplied.
+    if (
+      val.creditCardId &&
+      val.paymentMethod &&
+      val.paymentMethod !== "credit_card" &&
+      val.type === "expense"
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["paymentMethod"],
-        message: "paymentMethod must be credit_card when creditCardId is set",
+        message: "paymentMethod must be credit_card when creditCardId is set on an expense",
       });
     }
   });

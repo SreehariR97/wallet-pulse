@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, lt, sql } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
@@ -8,6 +8,11 @@ import { creditCardCreateSchema } from "@/lib/validations/credit-card";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { getStatementCycle, getNextDueDate } from "@/lib/credit-cards";
 import type { CreditCardDTO, CreditCardListItemDTO } from "@/types";
+
+function todayCivil(): string {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
 
 function toCreditCardDTO(c: typeof creditCards.$inferSelect): CreditCardDTO {
   return {
@@ -67,6 +72,28 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
+  const today = todayCivil();
+
+  // Phase 4: fetch past-due cycles for this user in ONE query and group by
+  // card. Past-due = non-projected, due date passed, outstanding balance
+  // (statementBalance IS NOT NULL AND amountPaid < statementBalance).
+  // Scoping on userId + active cards means we never leak cross-tenant rows.
+  const cardIds = cards.map((c) => c.id);
+  const pastDueRows = await db
+    .select({ cardId: creditCardCycles.cardId })
+    .from(creditCardCycles)
+    .where(
+      and(
+        eq(creditCardCycles.userId, auth.userId),
+        inArray(creditCardCycles.cardId, cardIds),
+        eq(creditCardCycles.isProjected, false),
+        lt(creditCardCycles.paymentDueDate, today),
+        sql`${creditCardCycles.statementBalance} IS NOT NULL`,
+        sql`${creditCardCycles.amountPaid} < ${creditCardCycles.statementBalance}`,
+      ),
+    );
+  const pastDueCardIds = new Set(pastDueRows.map((r) => r.cardId));
+
   // Per-card cycle-spend aggregation in parallel. N cards → N queries; N is
   // small for real users (typically <10), and each hits the (user,card) index.
   const cycleWindows = cards.map((c) => getStatementCycle(now, c.statementDay, 0));
@@ -111,6 +138,7 @@ export async function GET(req: Request) {
       cycleSpend: cycleSpendRows[i],
       nextDueDate: nextDue.toISOString(),
       minPaymentEstimate,
+      hasPastDueCycle: pastDueCardIds.has(c.id),
     };
   });
 

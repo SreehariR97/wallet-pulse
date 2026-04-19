@@ -111,6 +111,40 @@ export function getStatementCycle(
 }
 
 /**
+ * Decide which cycle a payment belongs to. Phase 4 — single source of truth
+ * for payment-to-cycle allocation; reused by the pay route (for incoming
+ * payments) and by `recomputeCardCycleAllocations` (for full card sweeps).
+ *
+ * Rule: payment date D belongs to the first cycle (ordered ASC by
+ * cycleCloseDate) whose half-open interval `(cycleCloseDate, paymentDueDate]`
+ * contains D. Strict on the left (the close day rolls forward, matching the
+ * existing "statementDay is the LAST day of the closing cycle" convention);
+ * inclusive on the right (a payment made on the due day still counts).
+ *
+ * Returns `cycleId` or `null` for dates that fall outside every cycle's
+ * grace window (before the earliest close, after the latest due, or in the
+ * dead zone between two cycles). Callers should log on null so we can spot
+ * misconfiguration — realistically this only happens with manually-entered
+ * payments dated before the backfill's cycle row, or during the brief
+ * window before `mark-statement-issued` materializes the next projected
+ * cycle.
+ *
+ * Civil-date comparison via lexicographic string compare — valid because
+ * YYYY-MM-DD is monotonic in lex order. No TZ math.
+ */
+export function allocateCycleForPayment(
+  cycles: Array<{ id: string; cycleCloseDate: string; paymentDueDate: string }>,
+  paymentDate: string,
+): string | null {
+  for (const cycle of cycles) {
+    if (paymentDate > cycle.cycleCloseDate && paymentDate <= cycle.paymentDueDate) {
+      return cycle.id;
+    }
+  }
+  return null;
+}
+
+/**
  * Next occurrence of paymentDueDay at or after `now`. Capped per-month.
  *
  * Returns a UTC Date at midnight on the due day.

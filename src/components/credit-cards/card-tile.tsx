@@ -27,6 +27,8 @@ export interface CreditCardSummary {
   nextDueDate: string;
   minPaymentEstimate: number;
   isActive: boolean;
+  /** Phase 4: any past issued cycle still carries a balance past due. */
+  hasPastDueCycle?: boolean;
 }
 
 function utilBar(pct: number) {
@@ -70,6 +72,15 @@ export function CardTile({
               {!card.isActive && (
                 <span className="inline-flex items-center rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-muted-foreground">
                   Archived
+                </span>
+              )}
+              {card.hasPastDueCycle && card.isActive && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-md bg-destructive/15 px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-destructive"
+                  title="A previous statement on this card is past due"
+                >
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-destructive" />
+                  Past due
                 </span>
               )}
             </div>

@@ -3,20 +3,32 @@ import * as React from "react";
 import { cn, formatCurrency, formatCivilDate } from "@/lib/utils";
 import type { CreditCardCycleRowDTO } from "@/types";
 
-type Status = "projected" | "issued" | "due-today" | "past-due";
+type Status =
+  | "projected"
+  | "paid-in-full"
+  | "past-due"
+  | "due-today"
+  | "minimum-paid"
+  | "issued";
 
-function statusForCycle(c: CreditCardCycleRowDTO, todayCivil: string): Status {
+const EPSILON = 0.005;
+
+// Precedence (highest → lowest): projected wins trivially; for real cycles,
+// full payoff trumps lateness (a paid-in-full statement is NOT past-due even
+// if logged after the due date), past-due trumps due-today, due-today trumps
+// minimum-paid, issued is the fallback. statementBalance may be 0 (rare but
+// legal after a carryover), in which case we treat it as paid-in-full.
+function statusForCycle(c: CreditCardCycleRowDTO, today: string): Status {
   if (c.isProjected) return "projected";
-  // Phase 4 will populate amountPaid; until then, the past-due branch never
-  // fires because amountPaid is always 0 and statementBalance may be null.
-  if (
-    todayCivil > c.paymentDueDate &&
-    c.statementBalance !== null &&
-    c.amountPaid < c.statementBalance
-  ) {
-    return "past-due";
+  if (c.statementBalance !== null) {
+    const paid = c.amountPaid;
+    if (paid + EPSILON >= c.statementBalance) return "paid-in-full";
+    if (today > c.paymentDueDate) return "past-due";
+    if (today === c.paymentDueDate) return "due-today";
+    if (c.minimumPayment !== null && paid + EPSILON >= c.minimumPayment) {
+      return "minimum-paid";
+    }
   }
-  if (todayCivil === c.paymentDueDate) return "due-today";
   return "issued";
 }
 
@@ -26,12 +38,16 @@ function StatusBadge({ status }: { status: Status }) {
     issued: "bg-secondary text-foreground",
     "due-today": "bg-amber-500/15 text-amber-600 dark:text-amber-400",
     "past-due": "bg-destructive/15 text-destructive",
+    "paid-in-full": "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    "minimum-paid": "bg-sky-500/15 text-sky-600 dark:text-sky-400",
   };
   const label: Record<Status, string> = {
     projected: "Projected",
     issued: "Issued",
     "due-today": "Due today",
     "past-due": "Past due",
+    "paid-in-full": "Paid in full",
+    "minimum-paid": "Min paid",
   };
   return (
     <span
@@ -71,6 +87,22 @@ export function CycleHistoryList({
           const status = statusForCycle(c, todayCivil);
           const interactive = c.isProjected;
           const Row: React.ElementType = interactive ? "button" : "div";
+          // Remaining = statementBalance - amountPaid (clamped to 0). Only
+          // meaningful for issued cycles; projected has no statement balance.
+          const remaining =
+            c.statementBalance !== null
+              ? Math.max(0, c.statementBalance - c.amountPaid)
+              : null;
+          const secondary =
+            c.isProjected
+              ? c.minimumPayment !== null
+                ? `Min ${formatCurrency(c.minimumPayment, currency)}`
+                : "Tap to mark issued"
+              : remaining !== null && c.amountPaid > 0
+                ? `Paid ${formatCurrency(c.amountPaid, currency)} · ${formatCurrency(remaining, currency)} left`
+                : c.minimumPayment !== null
+                  ? `Min ${formatCurrency(c.minimumPayment, currency)}`
+                  : null;
           return (
             <Row
               key={c.id}
@@ -99,12 +131,11 @@ export function CycleHistoryList({
                     ? formatCurrency(c.statementBalance, currency)
                     : "—"}
                 </span>
-                <span className="text-[11px] font-[460] text-muted-foreground">
-                  Min{" "}
-                  {c.minimumPayment !== null
-                    ? formatCurrency(c.minimumPayment, currency)
-                    : "—"}
-                </span>
+                {secondary && (
+                  <span className="text-[11px] font-[460] text-muted-foreground">
+                    {secondary}
+                  </span>
+                )}
               </div>
             </Row>
           );
