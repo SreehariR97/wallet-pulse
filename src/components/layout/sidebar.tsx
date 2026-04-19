@@ -8,7 +8,7 @@ import { NAV_ITEMS } from "./nav-items";
 export function Sidebar({ user }: { user: { name: string; email: string } }) {
   const pathname = usePathname();
   return (
-    <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-background md:flex">
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-background md:flex md:sticky md:top-0 md:h-screen md:self-start md:overflow-y-auto">
       <div className="flex h-16 items-center gap-2 border-b border-border px-6">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground">
           <Wallet className="h-4 w-4" />
