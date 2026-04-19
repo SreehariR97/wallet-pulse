@@ -66,8 +66,8 @@ export function CardsView({ currency }: { currency: string }) {
         issuer: editing.issuer,
         last4: editing.last4,
         creditLimit: editing.creditLimit,
-        statementDay: (editing as unknown as { statementDay: number }).statementDay,
-        paymentDueDay: (editing as unknown as { paymentDueDay: number }).paymentDueDay,
+        cycleCloseDate: editing.currentCycleCloseDate,
+        paymentDueDate: editing.currentPaymentDueDate,
         minimumPaymentPercent: (editing as unknown as { minimumPaymentPercent: number })
           .minimumPaymentPercent,
       }

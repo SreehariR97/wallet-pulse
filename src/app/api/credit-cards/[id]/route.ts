@@ -6,7 +6,6 @@ import * as schema from "@/lib/db/schema";
 import { creditCards, creditCardCycles, transactions } from "@/lib/db/schema";
 import { creditCardUpdateSchema } from "@/lib/validations/credit-card";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
-import { getStatementCycle, getNextDueDate } from "@/lib/credit-cards";
 import type {
   CreditCardDTO,
   CreditCardDetailDTO,
@@ -15,7 +14,7 @@ import type {
 } from "@/types";
 
 type CreditCardPatch = Partial<
-  Omit<typeof creditCards.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">
+  Omit<typeof creditCards.$inferInsert, "id" | "userId" | "createdAt">
 >;
 
 function toCreditCardDTO(c: typeof creditCards.$inferSelect): CreditCardDTO {
@@ -26,8 +25,6 @@ function toCreditCardDTO(c: typeof creditCards.$inferSelect): CreditCardDTO {
     issuer: c.issuer,
     last4: c.last4,
     creditLimit: Number(c.creditLimit),
-    statementDay: c.statementDay,
-    paymentDueDay: c.paymentDueDay,
     minimumPaymentPercent: c.minimumPaymentPercent,
     isActive: c.isActive,
     sortOrder: c.sortOrder,
@@ -85,47 +82,46 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     .orderBy(desc(creditCardCycles.cycleCloseDate), desc(creditCardCycles.createdAt))
     .limit(2);
 
-  let currentCycleId: string | null = null;
-  let currentCycleStart: string;
-  let currentCycleEnd: string;
-  let nextDueDateStr: string;
-  let currentStatementBalance: number | null = null;
-  let currentMinimumPayment: number | null = null;
-  let currentIsProjected = true;
-
-  if (recentCycles.length >= 1) {
-    const curr = recentCycles[0];
-    currentCycleId = curr.id;
-    // Civil date → ISO midnight-UTC (matches formatUtcDay consumers and the
-    // fallback path's T00:00:00Z / T23:59:59.999Z convention).
-    currentCycleEnd = new Date(`${curr.cycleCloseDate}T23:59:59.999Z`).toISOString();
-    nextDueDateStr = new Date(`${curr.paymentDueDate}T00:00:00.000Z`).toISOString();
-    currentStatementBalance = curr.statementBalance === null ? null : Number(curr.statementBalance);
-    currentMinimumPayment = curr.minimumPayment === null ? null : Number(curr.minimumPayment);
-    currentIsProjected = curr.isProjected;
-
-    if (recentCycles.length === 2) {
-      // Opens the day after the previous cycle closed.
-      const prevClose = new Date(`${recentCycles[1].cycleCloseDate}T00:00:00.000Z`);
-      prevClose.setUTCDate(prevClose.getUTCDate() + 1);
-      currentCycleStart = prevClose.toISOString();
-    } else {
-      // Only one cycle on file — estimate start as close - 30d.
-      const start = new Date(`${curr.cycleCloseDate}T00:00:00.000Z`);
-      start.setUTCDate(start.getUTCDate() - 30);
-      currentCycleStart = start.toISOString();
-    }
-  } else {
-    // Defensive fallback: pre-backfill cards. Phase 1 inserted a row per
-    // card so this path shouldn't trigger in practice.
-    console.warn(
-      `[GET /api/credit-cards/:id] no cycle rows for card ${card.id}, falling back to integer-derived dates`,
+  // Post-Phase-5 invariant: every card has at least one cycle row (Phase 1
+  // backfill created one per card, and card POST always inserts one). A
+  // card without cycles is a data bug — surface it as 500 instead of
+  // silently falling back to a guessed window.
+  if (recentCycles.length === 0) {
+    console.error("[GET /api/credit-cards/:id] no cycle rows for card", {
+      userId: auth.userId,
+      cardId: card.id,
+    });
+    return fail(
+      500,
+      "Card is missing its cycle history. This is a data bug — please contact support.",
     );
-    const now = new Date();
-    const currentCycle = getStatementCycle(now, card.statementDay, 0);
-    currentCycleStart = currentCycle.start.toISOString();
-    currentCycleEnd = currentCycle.end.toISOString();
-    nextDueDateStr = getNextDueDate(now, card.paymentDueDay).toISOString();
+  }
+
+  const curr = recentCycles[0];
+  const currentCycleId: string = curr.id;
+  // Civil date → ISO midnight-UTC (matches formatUtcDay consumers and the
+  // T00:00:00Z / T23:59:59.999Z convention used elsewhere).
+  const currentCycleEnd = new Date(
+    `${curr.cycleCloseDate}T23:59:59.999Z`,
+  ).toISOString();
+  const nextDueDateStr = new Date(
+    `${curr.paymentDueDate}T00:00:00.000Z`,
+  ).toISOString();
+  const currentStatementBalance =
+    curr.statementBalance === null ? null : Number(curr.statementBalance);
+  const currentMinimumPayment =
+    curr.minimumPayment === null ? null : Number(curr.minimumPayment);
+  const currentIsProjected = curr.isProjected;
+
+  let currentCycleStart: string;
+  if (recentCycles.length === 2) {
+    const prevClose = new Date(`${recentCycles[1].cycleCloseDate}T00:00:00.000Z`);
+    prevClose.setUTCDate(prevClose.getUTCDate() + 1);
+    currentCycleStart = prevClose.toISOString();
+  } else {
+    const start = new Date(`${curr.cycleCloseDate}T00:00:00.000Z`);
+    start.setUTCDate(start.getUTCDate() - 30);
+    currentCycleStart = start.toISOString();
   }
 
   // If a real statement is on file with a minimum, use that over the
@@ -165,26 +161,26 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const p = parsed.data;
 
   // Schema's refine guarantees lastStatementCloseDate and paymentDueDate are
-  // paired (both present or both absent). When present, derive the integer
-  // day-of-month so the legacy credit_cards.statement_day / payment_due_day
-  // columns stay in sync (dropped in Phase 5). When absent, skip the cycle
-  // upsert entirely and do a single card UPDATE — no atomic wrapper needed.
+  // paired (both present or both absent). When absent, skip the cycle upsert
+  // entirely and do a single card UPDATE — no atomic wrapper needed.
   const hasDates =
     p.lastStatementCloseDate !== undefined && p.paymentDueDate !== undefined;
   const hasBalance = p.statementBalance !== undefined;
   const hasMinPayment = p.minimumPayment !== undefined;
 
+  // updatedAt is stamped unconditionally so that (a) a dates-only patch
+  // which leaves every other card field unchanged still produces a valid
+  // non-empty SET clause — pg 42601 otherwise — and (b) the 0004 trigger-
+  // less era-compatible behavior stays consistent across both PATCH paths.
   const patch: CreditCardPatch = {
+    // Stamped unconditionally so a dates-only patch still produces a
+    // non-empty SET clause (pg 42601 otherwise). Cast: Drizzle's inferInsert
+    // narrows updatedAt to Date, but .set() accepts SQL expressions.
+    updatedAt: sql`now()` as unknown as Date,
     ...(p.name !== undefined ? { name: p.name } : {}),
     ...(p.issuer !== undefined ? { issuer: p.issuer } : {}),
     ...(p.last4 !== undefined ? { last4: p.last4 } : {}),
     ...(p.creditLimit !== undefined ? { creditLimit: String(p.creditLimit) } : {}),
-    ...(hasDates
-      ? {
-          statementDay: Number(p.lastStatementCloseDate!.slice(8, 10)),
-          paymentDueDay: Number(p.paymentDueDate!.slice(8, 10)),
-        }
-      : {}),
     ...(p.minimumPaymentPercent !== undefined
       ? { minimumPaymentPercent: p.minimumPaymentPercent }
       : {}),

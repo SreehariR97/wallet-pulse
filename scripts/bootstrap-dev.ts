@@ -29,6 +29,7 @@ import {
   transactions,
   budgets,
   creditCards,
+  creditCardCycles,
   remittances,
   type Category,
   type CreditCard,
@@ -253,24 +254,26 @@ const CARD_DEFS: Array<{
   issuer: string;
   last4: string;
   creditLimit: number;
-  statementDay: number;
-  paymentDueDay: number;
+  /** Civil date (YYYY-MM-DD) of the most recently closed statement. */
+  cycleCloseDate: string;
+  /** Civil date (YYYY-MM-DD) of the next payment due. */
+  paymentDueDate: string;
 }> = [
   {
     name: "Chase Sapphire Preferred",
     issuer: "Chase",
     last4: "4521",
     creditLimit: 12000,
-    statementDay: 14,
-    paymentDueDay: 9,
+    cycleCloseDate: "2026-04-14",
+    paymentDueDate: "2026-05-09",
   },
   {
     name: "Amex Gold",
     issuer: "American Express",
     last4: "1007",
     creditLimit: 25000,
-    statementDay: 28,
-    paymentDueDay: 25,
+    cycleCloseDate: "2026-03-28",
+    paymentDueDate: "2026-04-25",
   },
 ];
 
@@ -279,18 +282,28 @@ async function ensureCreditCardsForUser(userId: string): Promise<CreditCard[]> {
   const byName = new Set(existing.map((c) => c.name.toLowerCase()));
   const missing = CARD_DEFS.filter((d) => !byName.has(d.name.toLowerCase()));
   if (missing.length > 0) {
-    await db.insert(creditCards).values(
-      missing.map((c, i) => ({
+    const newCardRows = missing.map((c, i) => ({
+      id: randomUUID(),
+      userId,
+      name: c.name,
+      issuer: c.issuer,
+      last4: c.last4,
+      creditLimit: String(c.creditLimit),
+      minimumPaymentPercent: 2,
+      sortOrder: existing.length + i,
+    }));
+    await db.insert(creditCards).values(newCardRows);
+    // Phase 5: every card needs at least one cycle row (routes treat the
+    // absence as a data bug). Seed a projected cycle per new card mirroring
+    // the dates in CARD_DEFS.
+    await db.insert(creditCardCycles).values(
+      newCardRows.map((row, i) => ({
         id: randomUUID(),
+        cardId: row.id,
         userId,
-        name: c.name,
-        issuer: c.issuer,
-        last4: c.last4,
-        creditLimit: String(c.creditLimit),
-        statementDay: c.statementDay,
-        paymentDueDay: c.paymentDueDay,
-        minimumPaymentPercent: 2,
-        sortOrder: existing.length + i,
+        cycleCloseDate: missing[i].cycleCloseDate,
+        paymentDueDate: missing[i].paymentDueDate,
+        isProjected: true,
       })),
     );
     return db.select().from(creditCards).where(eq(creditCards.userId, userId));

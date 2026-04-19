@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { cn, formatCurrency, formatUtcDay } from "@/lib/utils";
+import { cn, formatCurrency, formatCivilDate } from "@/lib/utils";
 import type { CreditCardSummary } from "@/components/credit-cards/card-tile";
 
 function utilBar(pct: number) {
@@ -65,7 +65,7 @@ export function CardsWidget({
                       </div>
                     </div>
                     <span className="inline-flex items-center rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.06em] text-muted-foreground tabular-nums">
-                      Due {formatUtcDay(c.nextDueDate)}
+                      Due {formatCivilDate(c.currentPaymentDueDate, "MMM d")}
                     </span>
                   </div>
                   <div className="mt-3 flex items-baseline justify-between gap-2">

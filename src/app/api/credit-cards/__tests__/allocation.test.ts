@@ -65,8 +65,8 @@ beforeEach(async () => {
   ]);
 
   await currentDb.insert(schema.creditCards).values([
-    { id: CARD_A, userId: TEST_USERS.A.userId, name: "Card A", issuer: "Chase", creditLimit: "5000", statementDay: 15, paymentDueDay: 7 },
-    { id: CARD_B, userId: TEST_USERS.B.userId, name: "Card B", issuer: "Amex", creditLimit: "8000", statementDay: 15, paymentDueDay: 10 },
+    { id: CARD_A, userId: TEST_USERS.A.userId, name: "Card A", issuer: "Chase", creditLimit: "5000" },
+    { id: CARD_B, userId: TEST_USERS.B.userId, name: "Card B", issuer: "Amex", creditLimit: "8000" },
   ]);
 
   await currentDb.insert(schema.creditCardCycles).values([

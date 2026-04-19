@@ -5,7 +5,6 @@ import {
   boolean,
   date,
   doublePrecision,
-  integer,
   numeric,
   timestamp,
   index,
@@ -136,12 +135,6 @@ export const creditCards = pgTable(
     issuer: text("issuer").notNull(),
     last4: text("last4"),
     creditLimit: numeric("credit_limit", { precision: 14, scale: 2 }).notNull(),
-    // statementDay is the LAST day of the closing cycle (Chase / Amex
-    // convention). Transactions dated on this day belong to the cycle that
-    // just closed; the new cycle starts the following day. Values 1..31
-    // are stored as-is; computation caps to month-end for short months.
-    statementDay: integer("statement_day").notNull(),
-    paymentDueDay: integer("payment_due_day").notNull(),
     minimumPaymentPercent: doublePrecision("minimum_payment_percent")
       .notNull()
       .default(2),

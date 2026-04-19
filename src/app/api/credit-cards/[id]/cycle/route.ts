@@ -4,21 +4,26 @@
  * Returns the statement cycle window, category-grouped expenses, payments,
  * and the list of transactions falling in the window for a single card.
  *
- * Cycle convention (see lib/credit-cards.ts for the full helper): the card's
- * statementDay is the LAST day of the closing cycle. Transactions dated on
- * statementDay belong to the cycle that just closed; the next cycle starts
- * the following day.
+ * Phase 5: cycle windows are derived from rows in `credit_card_cycles`
+ * (source of truth). The integer-day helpers are gone. We fetch the
+ * target cycle's `cycleCloseDate` plus the previous cycle's close (for
+ * the window start) in a single ordered query.
  *
- *   period=current  → the cycle currently accruing (offset 0)
- *   period=previous → the cycle that most recently closed (offset 1)
- *   period=N        → N cycles before the current one
+ *   period=current  → cycle at index 0 (latest by cycleCloseDate DESC)
+ *   period=previous → cycle at index 1
+ *   period=N        → cycle at index N
+ *
+ * Window bounds:
+ *   end   = target.cycleCloseDate (inclusive)
+ *   start = (prev.cycleCloseDate + 1 day) if a previous cycle exists,
+ *           else target.cycleCloseDate − 30 days (estimate — same
+ *           fallback as the detail GET's currentCycleStart).
  */
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { categories, creditCards, transactions } from "@/lib/db/schema";
+import { categories, creditCards, creditCardCycles, transactions } from "@/lib/db/schema";
 import { cycleQuerySchema } from "@/lib/validations/credit-card";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
-import { getStatementCycle } from "@/lib/credit-cards";
 import type { CreditCardCycleDTO, TransactionListItem } from "@/types";
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
@@ -40,15 +45,47 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const offset =
     p.period === "current" ? 0 : p.period === "previous" ? 1 : Number(p.period);
 
-  const win = getStatementCycle(new Date(), card.statementDay, offset);
+  // Pull offset+2 rows so we always have both the target and its
+  // immediately-older sibling (used to compute the window start).
+  const cycleRows = await db
+    .select({
+      cycleCloseDate: creditCardCycles.cycleCloseDate,
+    })
+    .from(creditCardCycles)
+    .where(eq(creditCardCycles.cardId, card.id))
+    .orderBy(desc(creditCardCycles.cycleCloseDate), desc(creditCardCycles.createdAt))
+    .limit(offset + 2);
+
+  if (cycleRows.length <= offset) {
+    return fail(404, `No cycle at offset ${offset} for this card.`);
+  }
+
+  const target = cycleRows[offset];
+  const prev = cycleRows[offset + 1] ?? null;
+
+  const endUtc = new Date(`${target.cycleCloseDate}T23:59:59.999Z`);
+  const startUtc = prev
+    ? (() => {
+        const d = new Date(`${prev.cycleCloseDate}T00:00:00.000Z`);
+        d.setUTCDate(d.getUTCDate() + 1);
+        return d;
+      })()
+    : (() => {
+        const d = new Date(`${target.cycleCloseDate}T00:00:00.000Z`);
+        d.setUTCDate(d.getUTCDate() - 30);
+        return d;
+      })();
+
+  // transactions.date is stored as a civil date (YYYY-MM-DD) — compare
+  // against civil-extracted strings, same pattern as the rest of the app.
+  const startCivil = startUtc.toISOString().slice(0, 10);
+  const endCivil = endUtc.toISOString().slice(0, 10);
 
   const baseFilters = [
     eq(transactions.userId, auth.userId),
     eq(transactions.creditCardId, card.id),
-    // Cycle boundaries are midnight-UTC Date markers; extract UTC civil day
-    // to match how transactions.date is stored.
-    gte(transactions.date, win.start.toISOString().slice(0, 10)),
-    lte(transactions.date, win.end.toISOString().slice(0, 10)),
+    gte(transactions.date, startCivil),
+    lte(transactions.date, endCivil),
   ];
 
   // Category breakdown — expenses only.
@@ -131,12 +168,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       issuer: card.issuer,
       last4: card.last4,
       creditLimit: Number(card.creditLimit),
-      statementDay: card.statementDay,
-      paymentDueDay: card.paymentDueDay,
     },
     offset,
-    start: win.start.toISOString(),
-    end: win.end.toISOString(),
+    start: startUtc.toISOString(),
+    end: endUtc.toISOString(),
     totalExpense: Number(totals?.totalExpense ?? 0),
     totalPayments: Number(totals?.totalPayments ?? 0),
     count: Number(totals?.count ?? 0),

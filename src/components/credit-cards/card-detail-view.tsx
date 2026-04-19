@@ -49,8 +49,6 @@ interface CycleData {
     issuer: string;
     last4: string | null;
     creditLimit: number;
-    statementDay: number;
-    paymentDueDay: number;
   };
   offset: number;
   start: string;
@@ -170,8 +168,10 @@ export function CardDetailView({
         issuer: card.issuer,
         last4: card.last4,
         creditLimit: card.creditLimit,
-        statementDay: card.statementDay,
-        paymentDueDay: card.paymentDueDay,
+        // Phase 5: seed civil dates directly from the current cycle row
+        // (detail DTO exposes these as ISO-at-boundary strings).
+        cycleCloseDate: card.currentCycleEnd.slice(0, 10),
+        paymentDueDate: card.nextDueDate.slice(0, 10),
         minimumPaymentPercent: card.minimumPaymentPercent,
       }
     : null;

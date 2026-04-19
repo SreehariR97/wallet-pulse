@@ -141,7 +141,9 @@ export interface BudgetListItemDTO {
 
 // ── Credit cards ─────────────────────────────────────────────────────
 
-/** Write-response shape: full credit_cards row with creditLimit coerced. */
+/** Write-response shape: full credit_cards row with creditLimit coerced.
+ *  Phase 5 dropped the day-of-month integers — cycle dates live in
+ *  `credit_card_cycles` and are surfaced via the list/detail DTOs below. */
 export interface CreditCardDTO {
   id: string;
   userId: string;
@@ -149,8 +151,6 @@ export interface CreditCardDTO {
   issuer: string;
   last4: string | null;
   creditLimit: number;
-  statementDay: number;
-  paymentDueDay: number;
   minimumPaymentPercent: number;
   isActive: boolean;
   sortOrder: number;
@@ -158,16 +158,19 @@ export interface CreditCardDTO {
   updatedAt: string;
 }
 
-/** List endpoint adds per-card computed fields. `cycleSpend` is distinct
- *  from the detail endpoint's `totalExpense`/`totalPayments` split. */
+/** List endpoint adds per-card computed fields sourced from the most-recent
+ *  `credit_card_cycles` row. `cycleSpend` is distinct from the detail
+ *  endpoint's `totalExpense`/`totalPayments` split. */
 export interface CreditCardListItemDTO extends CreditCardDTO {
   balance: number;
   utilizationPercent: number;
-  currentCycleStart: string;
-  currentCycleEnd: string;
   cycleSpend: number;
-  nextDueDate: string;
   minPaymentEstimate: number;
+  /** Phase 5: current cycle's dates as civil strings (YYYY-MM-DD), sourced
+   *  from the latest row in credit_card_cycles. */
+  currentCycleCloseDate: string;
+  currentPaymentDueDate: string;
+  currentIsProjected: boolean;
   /** Phase 4: any non-projected cycle whose paymentDueDate has passed and
    *  where amountPaid < statementBalance. Surfaced as a red dot on the card
    *  tile so users can spot trouble without opening the detail view. */
@@ -218,8 +221,6 @@ export interface CreditCardCycleDTO {
     issuer: string;
     last4: string | null;
     creditLimit: number;
-    statementDay: number;
-    paymentDueDay: number;
   };
   offset: number;
   start: string;

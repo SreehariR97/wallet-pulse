@@ -37,8 +37,8 @@ beforeEach(async () => {
   await seedTwoUsers(currentDb);
 
   await currentDb.insert(schema.creditCards).values([
-    { id: A.cardId, userId: A.userId, name: "Card A", issuer: "Chase", creditLimit: "5000", statementDay: 15, paymentDueDay: 10 },
-    { id: B.cardId, userId: B.userId, name: "Card B", issuer: "Amex", creditLimit: "8000", statementDay: 20, paymentDueDay: 15 },
+    { id: A.cardId, userId: A.userId, name: "Card A", issuer: "Chase", creditLimit: "5000" },
+    { id: B.cardId, userId: B.userId, name: "Card B", issuer: "Amex", creditLimit: "8000" },
   ]);
   // Phase 3: GET /:id reads the current cycle from credit_card_cycles and
   // logs a console.warn on the fallback path. Seed a projected cycle per

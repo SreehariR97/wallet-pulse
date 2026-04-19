@@ -20,48 +20,11 @@ export interface CardFormInitial {
   issuer: string;
   last4: string | null;
   creditLimit: number;
-  // Phase 2 keeps the integer-based DTO so the GET route + card-tile UI can
-  // still read these. Phase 5 drops them once all callers are moved over to
-  // cycle rows.
-  statementDay: number;
-  paymentDueDay: number;
+  // Phase 5: real civil dates sourced from the card's current cycle row.
+  // YYYY-MM-DD, seeded directly into the date pickers.
+  cycleCloseDate: string;
+  paymentDueDate: string;
   minimumPaymentPercent: number;
-}
-
-// Seed date pickers for existing cards by re-deriving a plausible date from
-// the legacy day-of-month integer. This is a one-way derivation — the picker
-// loses the actual last-saved date across edits until Phase 3 surfaces cycle
-// history in the DTO. Known limitation, acceptable for Phase 2.
-function cappedDay(year: number, monthIndex: number, day: number): number {
-  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
-  return Math.min(day, lastDay);
-}
-function formatLocal(y: number, m: number, d: number): string {
-  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-function mostRecentOccurrence(day: number): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const today = now.getDate();
-  const capped = cappedDay(y, m, day);
-  if (today >= capped) return formatLocal(y, m, capped);
-  const prev = new Date(y, m - 1, 1);
-  const py = prev.getFullYear();
-  const pm = prev.getMonth();
-  return formatLocal(py, pm, cappedDay(py, pm, day));
-}
-function nextOccurrence(day: number): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const today = now.getDate();
-  const capped = cappedDay(y, m, day);
-  if (today <= capped) return formatLocal(y, m, capped);
-  const next = new Date(y, m + 1, 1);
-  const ny = next.getFullYear();
-  const nm = next.getMonth();
-  return formatLocal(ny, nm, cappedDay(ny, nm, day));
 }
 
 export function CardForm({
@@ -92,12 +55,9 @@ export function CardForm({
     setIssuer(initial?.issuer ?? "");
     setLast4(initial?.last4 ?? "");
     setCreditLimit(initial ? String(initial.creditLimit) : "");
-    setLastStatementCloseDate(
-      initial ? mostRecentOccurrence(initial.statementDay) : "",
-    );
-    setPaymentDueDate(initial ? nextOccurrence(initial.paymentDueDay) : "");
-    // Balance + min never round-trip from the GET DTO in Phase 2 — always
-    // blank on edit. Phase 3 surfaces the saved cycle values.
+    setLastStatementCloseDate(initial?.cycleCloseDate ?? "");
+    setPaymentDueDate(initial?.paymentDueDate ?? "");
+    // Balance + min never round-trip from the GET DTO — always blank on edit.
     setStatementBalance("");
     setMinimumPayment("");
     setMinPct(String(initial?.minimumPaymentPercent ?? 2));

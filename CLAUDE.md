@@ -107,9 +107,15 @@ Pre-generate UUIDs client-side so inserts don't depend on each other's results �
 
 This pattern was added after two routes (remittances POST and PATCH) shipped with `db.transaction()` and broke on production while local dev (pg driver) kept working. If you add a new route with multi-statement atomic writes, use the same dispatch.
 
+### Credit-card cycles
+
+`credit_card_cycles` is the source of truth for statement dates, balances, minimums, and payment progress. Every card has exactly one projected cycle (the one currently accruing) plus any number of issued (real) cycles behind it. The legacy `credit_cards.statement_day` / `payment_due_day` integers are gone — all cycle reads flow through the cycles table. Card POST writes card + projected cycle atomically; every route that reads "current cycle" selects the row with the newest `cycleCloseDate`.
+
+"Mark statement issued" is the only path that promotes a projected cycle to a real one — PATCH `/api/credit-cards/:id/cycles/:cycleId` flips `is_projected` false, stamps `statement_balance` + `minimum_payment`, and inserts the next projected cycle atomically.
+
 ### Credit-card cycle allocation
 
-Payments on a credit card (type=transfer + creditCardId) are allocated to a cycle row in `credit_card_cycles` via the half-open interval `(cycleCloseDate, paymentDueDate]`. The `amount_paid` column is kept in sync by:
+Payments on a credit card (type=transfer + creditCardId) are allocated to a cycle row via the half-open interval `(cycleCloseDate, paymentDueDate]`. The `amount_paid` column is kept in sync by:
 
 - `POST /api/credit-cards/:id/pay` — atomic batch of `[INSERT tx, ...UPDATE cycles]`
 - `POST /api/transactions` — recomputes after an inserted transfer

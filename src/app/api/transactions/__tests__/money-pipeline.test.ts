@@ -127,8 +127,15 @@ describe("Money pipeline — response shape round-trip (Group A)", () => {
       name: "Card A",
       issuer: "Chase",
       creditLimit: "5000",
-      statementDay: 15,
-      paymentDueDay: 10,
+    });
+    // Phase 5: list endpoint requires a cycle row per card.
+    await currentDb.insert(schema.creditCardCycles).values({
+      id: "cycle-a5",
+      cardId: A.cardId,
+      userId: A.userId,
+      cycleCloseDate: "2026-04-15",
+      paymentDueDate: "2026-05-10",
+      isProjected: true,
     });
     // One expense of 1000 against the card → balance=1000, utilization=20%.
     await currentDb.insert(schema.transactions).values({

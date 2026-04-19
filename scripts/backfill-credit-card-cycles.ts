@@ -1,27 +1,19 @@
+// @ts-nocheck
 /**
+ * HISTORICAL — kept for reference, not runnable post-Phase 5.
+ *
  * One-time post-deploy migration for the credit-card cycle-history model
- * (Phase 1 of 5).
+ * (Phase 1 of 5). Ran once against prod on 2026-04 against a schema that
+ * still had `credit_cards.statement_day` / `payment_due_day`. Phase 5
+ * dropped those columns, so this script can no longer compile or execute
+ * against the current schema — the drizzle-typed `creditCards.statementDay`
+ * reference below doesn't exist anymore. Preserved verbatim (minus the
+ * helper imports, which were inlined so the file remains self-contained
+ * after `src/lib/credit-cards.ts` was pruned in Phase 5) so the provenance
+ * of every row currently in `credit_card_cycles` stays auditable.
  *
- * Creates ONE projected `credit_card_cycles` row per existing card, derived
- * from the card's current `statement_day` / `payment_due_day` integers. This
- * lets Phase 2 (UI + API) read cycles out of the new table without breaking
- * pre-existing cards that predate the feature.
- *
- * Idempotent: skips any card that already has at least one cycle row — safe
- * to re-run after partial failures or against a mixed-state DB.
- *
- * Heuristic for obviously-wrong day combinations: if the computed gap between
- * close and due is < 10 days or > 40 days, bump the due date forward by one
- * month. This catches the common case (Sree's Amex: statement=6, due=17,
- * which produces an 11-day gap but actually refers to the NEXT month's 17th
- * per real card behavior — an 11-day grace period is below the 21-day
- * regulatory minimum any real card gives). One bump only; if the result is
- * still out-of-range it's logged and accepted as-is.
- *
- * Run once against production Neon:
+ * Was invoked as:
  *   DATABASE_URL="..." pnpm tsx scripts/backfill-credit-card-cycles.ts
- *
- * See README.md → Applying feature migrations to existing production DB.
  */
 
 import { randomUUID } from "crypto";
@@ -33,21 +25,98 @@ config({ path: ".env" });
 
 import { db } from "../src/lib/db";
 import { creditCards, creditCardCycles } from "../src/lib/db/schema";
-import {
-  getStatementCycle,
-  getNextDueDate,
-  cappedDayOfMonth,
-} from "../src/lib/credit-cards";
+
+// ---------------------------------------------------------------------------
+// Local helper copies (moved inline from `src/lib/credit-cards.ts` in
+// Phase 5 when those helpers were removed from the live codebase).
+// ---------------------------------------------------------------------------
+
+function lastDayOfMonth(year: number, monthIndex: number): number {
+  return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+}
+
+function cappedDayOfMonth(year: number, monthIndex: number, day: number): number {
+  return Math.min(day, lastDayOfMonth(year, monthIndex));
+}
+
+function getStatementCycle(
+  now: Date,
+  statementDay: number,
+  offset: number = 0,
+): { start: Date; end: Date } {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const day = now.getUTCDate();
+  const cappedToday = cappedDayOfMonth(year, month, statementDay);
+
+  let closeYear: number;
+  let closeMonth: number;
+  if (day >= cappedToday) {
+    closeYear = year;
+    closeMonth = month;
+  } else {
+    const prev = new Date(Date.UTC(year, month - 1, 1));
+    closeYear = prev.getUTCFullYear();
+    closeMonth = prev.getUTCMonth();
+  }
+
+  const openMonthOffset = -offset;
+  const closeMonthOffset = -offset + 1;
+
+  const openRef = new Date(Date.UTC(closeYear, closeMonth + openMonthOffset, 1));
+  const closeRef = new Date(Date.UTC(closeYear, closeMonth + closeMonthOffset, 1));
+
+  const openDay = cappedDayOfMonth(
+    openRef.getUTCFullYear(),
+    openRef.getUTCMonth(),
+    statementDay,
+  );
+  const closeDay = cappedDayOfMonth(
+    closeRef.getUTCFullYear(),
+    closeRef.getUTCMonth(),
+    statementDay,
+  );
+
+  return {
+    start: new Date(
+      Date.UTC(openRef.getUTCFullYear(), openRef.getUTCMonth(), openDay + 1, 0, 0, 0, 0),
+    ),
+    end: new Date(
+      Date.UTC(
+        closeRef.getUTCFullYear(),
+        closeRef.getUTCMonth(),
+        closeDay,
+        23,
+        59,
+        59,
+        999,
+      ),
+    ),
+  };
+}
+
+function getNextDueDate(now: Date, paymentDueDay: number): Date {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const day = now.getUTCDate();
+  const cappedThis = cappedDayOfMonth(year, month, paymentDueDay);
+  if (day <= cappedThis) {
+    return new Date(Date.UTC(year, month, cappedThis, 0, 0, 0, 0));
+  }
+  const nextMonthRef = new Date(Date.UTC(year, month + 1, 1));
+  const ny = nextMonthRef.getUTCFullYear();
+  const nm = nextMonthRef.getUTCMonth();
+  const cappedNext = cappedDayOfMonth(ny, nm, paymentDueDay);
+  return new Date(Date.UTC(ny, nm, cappedNext, 0, 0, 0, 0));
+}
+
+// ---------------------------------------------------------------------------
 
 const MIN_GAP_DAYS = 10;
 const MAX_GAP_DAYS = 40;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function toCivilDate(d: Date): string {
-  // Cycle boundaries are Dates constructed as UTC markers (see
-  // src/lib/credit-cards.ts). `.toISOString().slice(0, 10)` extracts the UTC
-  // civil day — matches how date columns are stored. Same pattern as
-  // src/app/api/credit-cards/route.ts.
   return d.toISOString().slice(0, 10);
 }
 
