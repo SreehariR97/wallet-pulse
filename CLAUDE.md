@@ -94,6 +94,19 @@ Middleware imports ONLY `auth.config.ts` (no DB). The Credentials provider lives
 - **SQL**: all API queries are dialect-neutral. The only Postgres-specific SQL is `to_char(date, 'YYYY-MM-DD')` in `src/app/api/analytics/trends/route.ts`.
 - **Search**: use `ilike()` (not `like()`) for case-insensitive search — Postgres `LIKE` is case-sensitive.
 
+### Critical: atomic multi-statement writes
+
+The neon-http driver does NOT support interactive transactions — calling `db.transaction(async (trx) => ...)` throws "No transactions support in neon-http driver" at runtime in production. The type system does not catch this because `db` is a union (`NeonHttpDatabase | NodePgDatabase`) and `.transaction()` exists on both.
+
+For routes that write multiple rows atomically:
+- Use `db.batch([...queries])` on neon-http (atomic server-side via Neon's implicit transaction)
+- Use `db.transaction(async trx => ...)` on node-postgres
+- Dispatch at runtime via `typeof (db as { batch?: unknown }).batch === "function"`
+
+Pre-generate UUIDs client-side so inserts don't depend on each other's results — `db.batch` doesn't allow reading one insert's result before writing the next. For the canonical implementation, see the POST and PATCH handlers in `src/app/api/remittances/route.ts` and `src/app/api/remittances/[id]/route.ts`.
+
+This pattern was added after two routes (remittances POST and PATCH) shipped with `db.transaction()` and broke on production while local dev (pg driver) kept working. If you add a new route with multi-statement atomic writes, use the same dispatch.
+
 ## Database schema
 
 Tables: `users`, `categories` (per-user), `transactions`, `budgets`. Timestamps stored as `timestamp with time zone`. Amounts as `double precision`. See `src/lib/db/schema.ts`.

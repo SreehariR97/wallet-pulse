@@ -1,5 +1,7 @@
 import { and, eq } from "drizzle-orm";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { db } from "@/lib/db";
+import * as schema from "@/lib/db/schema";
 import { remittances, transactions } from "@/lib/db/schema";
 import { remittanceUpdateSchema } from "@/lib/validations/remittance";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
@@ -111,22 +113,57 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (p.service !== undefined) remitSet.service = p.service;
   if (p.recipientNote !== undefined) remitSet.recipientNote = p.recipientNote;
 
-  await db.transaction(async (trx) => {
-    if (Object.keys(txSet).length > 0) {
-      await trx
-        .update(transactions)
-        .set(txSet)
-        .where(
-          and(eq(transactions.id, existing.transactionId), eq(transactions.userId, auth.userId)),
-        );
+  const hasTx = Object.keys(txSet).length > 0;
+  const hasRemit = Object.keys(remitSet).length > 0;
+
+  // Same dispatch as POST route: neon-http doesn't support db.transaction, use
+  // batch (atomic server-side). pg supports both — keep transaction for local
+  // dev / self-host. Atomicity only matters when both sides get updated; a
+  // single-sided update is one statement and needs no wrapping. Empty PATCH
+  // (both sides empty) is a no-op — skip the DB round trip entirely.
+  if (hasTx && hasRemit) {
+    const maybeBatch = db as { batch?: unknown };
+    if (typeof maybeBatch.batch === "function") {
+      const neonDb = db as NeonHttpDatabase<typeof schema>;
+      await neonDb.batch([
+        neonDb
+          .update(transactions)
+          .set(txSet)
+          .where(
+            and(eq(transactions.id, existing.transactionId), eq(transactions.userId, auth.userId)),
+          ),
+        neonDb
+          .update(remittances)
+          .set(remitSet)
+          .where(and(eq(remittances.id, existing.id), eq(remittances.userId, auth.userId))),
+      ]);
+    } else {
+      await db.transaction(async (trx) => {
+        await trx
+          .update(transactions)
+          .set(txSet)
+          .where(
+            and(eq(transactions.id, existing.transactionId), eq(transactions.userId, auth.userId)),
+          );
+        await trx
+          .update(remittances)
+          .set(remitSet)
+          .where(and(eq(remittances.id, existing.id), eq(remittances.userId, auth.userId)));
+      });
     }
-    if (Object.keys(remitSet).length > 0) {
-      await trx
-        .update(remittances)
-        .set(remitSet)
-        .where(and(eq(remittances.id, existing.id), eq(remittances.userId, auth.userId)));
-    }
-  });
+  } else if (hasTx) {
+    await db
+      .update(transactions)
+      .set(txSet)
+      .where(
+        and(eq(transactions.id, existing.transactionId), eq(transactions.userId, auth.userId)),
+      );
+  } else if (hasRemit) {
+    await db
+      .update(remittances)
+      .set(remitSet)
+      .where(and(eq(remittances.id, existing.id), eq(remittances.userId, auth.userId)));
+  }
 
   const row = await loadOwned(auth.userId, existing.id);
   return ok(row ? (toDetailDTO(row) satisfies RemittanceDetailDTO) : null);
