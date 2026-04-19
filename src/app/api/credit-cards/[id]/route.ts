@@ -66,9 +66,74 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const creditLimit = Number(card.creditLimit);
   const utilizationPercent = creditLimit > 0 ? (balance / creditLimit) * 100 : 0;
 
-  const now = new Date();
-  const currentCycle = getStatementCycle(now, card.statementDay, 0);
-  const nextDueDate = getNextDueDate(now, card.paymentDueDay);
+  // Phase 3: the authoritative cycle is the most recent row in
+  // credit_card_cycles. LIMIT 2 so we can derive currentCycleStart from the
+  // previous row's close + 1 day (cycle lengths vary — don't invent an
+  // integer offset). No date filter: Phase 1 backfill populates forward-
+  // looking projected rows, and those are still the right source of truth.
+  const recentCycles = await db
+    .select({
+      id: creditCardCycles.id,
+      cycleCloseDate: creditCardCycles.cycleCloseDate,
+      paymentDueDate: creditCardCycles.paymentDueDate,
+      statementBalance: creditCardCycles.statementBalance,
+      minimumPayment: creditCardCycles.minimumPayment,
+      isProjected: creditCardCycles.isProjected,
+    })
+    .from(creditCardCycles)
+    .where(eq(creditCardCycles.cardId, card.id))
+    .orderBy(desc(creditCardCycles.cycleCloseDate), desc(creditCardCycles.createdAt))
+    .limit(2);
+
+  let currentCycleId: string | null = null;
+  let currentCycleStart: string;
+  let currentCycleEnd: string;
+  let nextDueDateStr: string;
+  let currentStatementBalance: number | null = null;
+  let currentMinimumPayment: number | null = null;
+  let currentIsProjected = true;
+
+  if (recentCycles.length >= 1) {
+    const curr = recentCycles[0];
+    currentCycleId = curr.id;
+    // Civil date → ISO midnight-UTC (matches formatUtcDay consumers and the
+    // fallback path's T00:00:00Z / T23:59:59.999Z convention).
+    currentCycleEnd = new Date(`${curr.cycleCloseDate}T23:59:59.999Z`).toISOString();
+    nextDueDateStr = new Date(`${curr.paymentDueDate}T00:00:00.000Z`).toISOString();
+    currentStatementBalance = curr.statementBalance === null ? null : Number(curr.statementBalance);
+    currentMinimumPayment = curr.minimumPayment === null ? null : Number(curr.minimumPayment);
+    currentIsProjected = curr.isProjected;
+
+    if (recentCycles.length === 2) {
+      // Opens the day after the previous cycle closed.
+      const prevClose = new Date(`${recentCycles[1].cycleCloseDate}T00:00:00.000Z`);
+      prevClose.setUTCDate(prevClose.getUTCDate() + 1);
+      currentCycleStart = prevClose.toISOString();
+    } else {
+      // Only one cycle on file — estimate start as close - 30d.
+      const start = new Date(`${curr.cycleCloseDate}T00:00:00.000Z`);
+      start.setUTCDate(start.getUTCDate() - 30);
+      currentCycleStart = start.toISOString();
+    }
+  } else {
+    // Defensive fallback: pre-backfill cards. Phase 1 inserted a row per
+    // card so this path shouldn't trigger in practice.
+    console.warn(
+      `[GET /api/credit-cards/:id] no cycle rows for card ${card.id}, falling back to integer-derived dates`,
+    );
+    const now = new Date();
+    const currentCycle = getStatementCycle(now, card.statementDay, 0);
+    currentCycleStart = currentCycle.start.toISOString();
+    currentCycleEnd = currentCycle.end.toISOString();
+    nextDueDateStr = getNextDueDate(now, card.paymentDueDay).toISOString();
+  }
+
+  // If a real statement is on file with a minimum, use that over the
+  // percentage estimate. Projected cycles still fall back to the estimate.
+  const minPaymentEstimate =
+    currentMinimumPayment !== null
+      ? currentMinimumPayment
+      : Math.max(0, balance) * (card.minimumPaymentPercent / 100);
 
   return ok({
     ...toCreditCardDTO(card),
@@ -76,10 +141,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     utilizationPercent,
     totalExpense,
     totalPayments,
-    currentCycleStart: currentCycle.start.toISOString(),
-    currentCycleEnd: currentCycle.end.toISOString(),
-    nextDueDate: nextDueDate.toISOString(),
-    minPaymentEstimate: Math.max(0, balance) * (card.minimumPaymentPercent / 100),
+    currentCycleStart,
+    currentCycleEnd,
+    nextDueDate: nextDueDateStr,
+    minPaymentEstimate,
+    currentCycleId,
+    currentStatementBalance,
+    currentMinimumPayment,
+    currentIsProjected,
   } satisfies CreditCardDetailDTO);
 }
 

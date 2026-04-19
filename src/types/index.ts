@@ -170,7 +170,10 @@ export interface CreditCardListItemDTO extends CreditCardDTO {
   minPaymentEstimate: number;
 }
 
-/** Detail endpoint exposes the expense/payment split separately from balance. */
+/** Detail endpoint exposes the expense/payment split separately from balance.
+ *  Phase 3: `current*` fields reflect the most-recent cycle row in
+ *  credit_card_cycles. `currentCycleId` is null only in the rare fallback
+ *  path where no cycle row exists (pre-backfill cards). */
 export interface CreditCardDetailDTO extends CreditCardDTO {
   balance: number;
   utilizationPercent: number;
@@ -180,6 +183,27 @@ export interface CreditCardDetailDTO extends CreditCardDTO {
   currentCycleEnd: string;
   nextDueDate: string;
   minPaymentEstimate: number;
+  currentCycleId: string | null;
+  currentStatementBalance: number | null;
+  currentMinimumPayment: number | null;
+  currentIsProjected: boolean;
+}
+
+/** A single row from credit_card_cycles, surfaced by GET /:id/cycles and
+ *  PATCH /:id/cycles/:cycleId. Named `...RowDTO` because the existing
+ *  `CreditCardCycleDTO` below is the older transactions-in-window shape
+ *  for GET /:id/cycle (different endpoint, different concept). */
+export interface CreditCardCycleRowDTO {
+  id: string;
+  cardId: string;
+  cycleCloseDate: string;
+  paymentDueDate: string;
+  statementBalance: number | null;
+  minimumPayment: number | null;
+  amountPaid: number;
+  isProjected: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** GET /:id/cycle — composite of card summary + window + aggregates + tx list. */

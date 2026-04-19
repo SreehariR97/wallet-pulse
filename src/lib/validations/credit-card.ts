@@ -76,6 +76,21 @@ export const creditCardUpdateSchema = z
     },
   );
 
+// Phase 3: "Mark statement issued" — promotes a projected cycle row into a
+// real one. All four fields required — once the user is saying "my statement
+// arrived", balance and minimum are known quantities.
+export const markStatementIssuedSchema = z
+  .object({
+    cycleCloseDate: isoDate,
+    paymentDueDate: isoDate,
+    statementBalance: z.coerce.number().nonnegative(),
+    minimumPayment: z.coerce.number().nonnegative(),
+  })
+  .refine((v) => v.paymentDueDate > v.cycleCloseDate, {
+    message: "Payment due date must be after the statement close date",
+    path: ["paymentDueDate"],
+  });
+
 export const creditCardPaySchema = z.object({
   amount: z.coerce
     .number()
@@ -96,3 +111,4 @@ export const cycleQuerySchema = z.object({
 export type CreditCardCreateInput = z.infer<typeof creditCardCreateSchema>;
 export type CreditCardUpdateInput = z.infer<typeof creditCardUpdateSchema>;
 export type CreditCardPayInput = z.infer<typeof creditCardPaySchema>;
+export type MarkStatementIssuedInput = z.infer<typeof markStatementIssuedSchema>;

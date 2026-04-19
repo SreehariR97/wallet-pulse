@@ -27,9 +27,10 @@ import { auth } from "@/lib/auth";
 import { GET as listGet } from "../route";
 import { GET as getById, PATCH as patchById, DELETE as deleteById } from "../[id]/route";
 import { GET as cycleGet } from "../[id]/cycle/route";
+import { PATCH as patchCycle } from "../[id]/cycles/[cycleId]/route";
 
-const A = { ...TEST_USERS.A, cardId: "card-a" };
-const B = { ...TEST_USERS.B, cardId: "card-b" };
+const A = { ...TEST_USERS.A, cardId: "card-a", cycleId: "cycle-a" };
+const B = { ...TEST_USERS.B, cardId: "card-b", cycleId: "cycle-b" };
 
 beforeEach(async () => {
   currentDb = await makeTestDb();
@@ -38,6 +39,13 @@ beforeEach(async () => {
   await currentDb.insert(schema.creditCards).values([
     { id: A.cardId, userId: A.userId, name: "Card A", issuer: "Chase", creditLimit: "5000", statementDay: 15, paymentDueDay: 10 },
     { id: B.cardId, userId: B.userId, name: "Card B", issuer: "Amex", creditLimit: "8000", statementDay: 20, paymentDueDay: 15 },
+  ]);
+  // Phase 3: GET /:id reads the current cycle from credit_card_cycles and
+  // logs a console.warn on the fallback path. Seed a projected cycle per
+  // card so tests exercise the mainline and keep the output clean.
+  await currentDb.insert(schema.creditCardCycles).values([
+    { id: A.cycleId, cardId: A.cardId, userId: A.userId, cycleCloseDate: "2026-04-15", paymentDueDate: "2026-05-10", isProjected: true },
+    { id: B.cycleId, cardId: B.cardId, userId: B.userId, cycleCloseDate: "2026-04-20", paymentDueDate: "2026-05-15", isProjected: true },
   ]);
 });
 
@@ -130,5 +138,33 @@ describe("GET /api/credit-cards/:id/cycle — user isolation", () => {
     asA();
     const res = (await cycleGet(getReq("http://localhost/api/credit-cards/" + B.cardId + "/cycle"), { params: { id: B.cardId } })) as Response;
     expect(res.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/credit-cards/:id/cycles/:cycleId — user isolation", () => {
+  it("patch cycle: A marking B's cycle as issued returns 404; B's cycle row is unchanged", async () => {
+    asA();
+    const req = jsonReq(
+      "http://localhost",
+      {
+        cycleCloseDate: "2026-04-20",
+        paymentDueDate: "2026-05-15",
+        statementBalance: 999.99,
+        minimumPayment: 99.99,
+      },
+      "PATCH",
+    );
+    const res = (await patchCycle(req, {
+      params: { id: B.cardId, cycleId: B.cycleId },
+    })) as Response;
+    expect(res.status).toBe(404);
+
+    const [row] = await currentDb
+      .select()
+      .from(schema.creditCardCycles)
+      .where(eq(schema.creditCardCycles.id, B.cycleId));
+    expect(row!.isProjected).toBe(true);
+    expect(row!.statementBalance).toBeNull();
+    expect(row!.minimumPayment).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import {
   Archive,
   ArrowLeft,
+  CheckCircle2,
   CreditCard,
   MoreHorizontal,
   Pencil,
@@ -33,8 +34,9 @@ import { TransactionTable } from "@/components/transactions/transaction-table";
 import { CardForm, type CardFormInitial } from "./card-form";
 import { CyclePicker, type CyclePeriod } from "./cycle-picker";
 import { PayCardDialog } from "./pay-card-dialog";
-import type { CreditCardSummary } from "./card-tile";
-import type { TransactionListItem } from "@/types";
+import { MarkStatementIssuedDialog, type MarkStatementIssuedInitial } from "./mark-statement-issued-dialog";
+import { CycleHistoryList } from "./cycle-history-list";
+import type { CreditCardDetailDTO, CreditCardCycleRowDTO, TransactionListItem } from "@/types";
 import { formatCurrency, formatUtcDay } from "@/lib/utils";
 
 type SortKey = "date" | "amount" | "description" | "createdAt";
@@ -74,13 +76,16 @@ export function CardDetailView({
   currency: string;
 }) {
   const router = useRouter();
-  const [card, setCard] = React.useState<CreditCardSummary | null>(null);
+  const [card, setCard] = React.useState<CreditCardDetailDTO | null>(null);
   const [cycle, setCycle] = React.useState<CycleData | null>(null);
+  const [cycleRows, setCycleRows] = React.useState<CreditCardCycleRowDTO[]>([]);
   const [period, setPeriod] = React.useState<CyclePeriod>("current");
   const [loading, setLoading] = React.useState(true);
   const [cycleLoading, setCycleLoading] = React.useState(true);
   const [editOpen, setEditOpen] = React.useState(false);
   const [payOpen, setPayOpen] = React.useState(false);
+  const [markIssuedInitial, setMarkIssuedInitial] =
+    React.useState<MarkStatementIssuedInitial | null>(null);
   const [confirmArchive, setConfirmArchive] = React.useState(false);
   const [sort, setSort] = React.useState<SortKey>("date");
   const [order, setOrder] = React.useState<SortOrder>("desc");
@@ -96,6 +101,13 @@ export function CardDetailView({
     setCard(json.data);
     setLoading(false);
   }, [cardId, router]);
+
+  const loadCycleHistory = React.useCallback(async () => {
+    const res = await fetch(`/api/credit-cards/${cardId}/cycles`);
+    if (!res.ok) return;
+    const json = await res.json();
+    setCycleRows(json.data);
+  }, [cardId]);
 
   const loadCycle = React.useCallback(async () => {
     setCycleLoading(true);
@@ -117,6 +129,10 @@ export function CardDetailView({
   React.useEffect(() => {
     loadCycle();
   }, [loadCycle]);
+
+  React.useEffect(() => {
+    loadCycleHistory();
+  }, [loadCycleHistory]);
 
   async function archive(): Promise<void> {
     const res = await fetch(`/api/credit-cards/${cardId}`, { method: "DELETE" });
@@ -154,12 +170,30 @@ export function CardDetailView({
         issuer: card.issuer,
         last4: card.last4,
         creditLimit: card.creditLimit,
-        statementDay: (card as unknown as { statementDay: number }).statementDay,
-        paymentDueDay: (card as unknown as { paymentDueDay: number }).paymentDueDay,
-        minimumPaymentPercent: (card as unknown as { minimumPaymentPercent: number })
-          .minimumPaymentPercent,
+        statementDay: card.statementDay,
+        paymentDueDay: card.paymentDueDay,
+        minimumPaymentPercent: card.minimumPaymentPercent,
       }
     : null;
+
+  function openMarkIssuedFromHeader() {
+    if (!card || !card.currentCycleId) return;
+    setMarkIssuedInitial({
+      cardId: card.id,
+      cycleId: card.currentCycleId,
+      cycleCloseDate: card.currentCycleEnd.slice(0, 10),
+      paymentDueDate: card.nextDueDate.slice(0, 10),
+    });
+  }
+
+  function openMarkIssuedFromHistory(row: CreditCardCycleRowDTO) {
+    setMarkIssuedInitial({
+      cardId: row.cardId,
+      cycleId: row.id,
+      cycleCloseDate: row.cycleCloseDate,
+      paymentDueDate: row.paymentDueDate,
+    });
+  }
 
   const util = card
     ? Math.max(0, Math.min(100, card.utilizationPercent))
@@ -242,6 +276,11 @@ export function CardDetailView({
         }
         action={
           <>
+            {card.isActive && card.currentIsProjected && card.currentCycleId && (
+              <Button variant="outline" onClick={openMarkIssuedFromHeader}>
+                <CheckCircle2 className="h-4 w-4" /> Mark statement issued
+              </Button>
+            )}
             {card.isActive && (
               <Button onClick={() => setPayOpen(true)}>
                 <CreditCard className="h-4 w-4" /> Pay card
@@ -293,8 +332,15 @@ export function CardDetailView({
               </div>
             </div>
             <div className="md:border-l md:border-border/60 md:pl-5">
-              <div className="text-[10px] font-[600] uppercase tracking-[0.08em] text-muted-foreground">
-                Cycle closes
+              <div className="flex items-center gap-1.5">
+                <div className="text-[10px] font-[600] uppercase tracking-[0.08em] text-muted-foreground">
+                  Cycle closes
+                </div>
+                {card.currentIsProjected && (
+                  <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-muted-foreground">
+                    Projected
+                  </span>
+                )}
               </div>
               <div className="mt-1 text-[17px] font-[540] tabular-nums">
                 {formatUtcDay(card.currentCycleEnd)}
@@ -307,9 +353,19 @@ export function CardDetailView({
               <div className="mt-1 text-[17px] font-[540] tabular-nums">
                 {formatUtcDay(card.nextDueDate)}
               </div>
-              {card.minPaymentEstimate > 0 && (
+              {card.currentStatementBalance !== null ? (
                 <div className="mt-0.5 text-[12px] font-[460] text-muted-foreground tabular-nums">
-                  Min {formatCurrency(card.minPaymentEstimate, currency)}
+                  Statement balance{" "}
+                  {formatCurrency(card.currentStatementBalance, currency)}
+                </div>
+              ) : null}
+              {(card.currentMinimumPayment !== null || card.minPaymentEstimate > 0) && (
+                <div className="mt-0.5 text-[12px] font-[460] text-muted-foreground tabular-nums">
+                  Min{" "}
+                  {formatCurrency(
+                    card.currentMinimumPayment ?? card.minPaymentEstimate,
+                    currency,
+                  )}
                 </div>
               )}
             </div>
@@ -408,6 +464,12 @@ export function CardDetailView({
         </div>
       )}
 
+      <CycleHistoryList
+        cycles={cycleRows}
+        currency={currency}
+        onMarkIssued={openMarkIssuedFromHistory}
+      />
+
       <CardForm
         open={editOpen}
         onOpenChange={setEditOpen}
@@ -415,6 +477,7 @@ export function CardDetailView({
         onSaved={() => {
           loadCard();
           loadCycle();
+          loadCycleHistory();
         }}
       />
       <PayCardDialog
@@ -425,6 +488,18 @@ export function CardDetailView({
         onSaved={() => {
           loadCard();
           loadCycle();
+          loadCycleHistory();
+        }}
+      />
+      <MarkStatementIssuedDialog
+        open={markIssuedInitial !== null}
+        onOpenChange={(o) => {
+          if (!o) setMarkIssuedInitial(null);
+        }}
+        initial={markIssuedInitial}
+        onSaved={() => {
+          loadCard();
+          loadCycleHistory();
         }}
       />
       <ConfirmDialog
