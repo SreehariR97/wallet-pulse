@@ -197,3 +197,58 @@ export type CreditCard = typeof creditCards.$inferSelect;
 export type NewCreditCard = typeof creditCards.$inferInsert;
 export type Remittance = typeof remittances.$inferSelect;
 export type NewRemittance = typeof remittances.$inferInsert;
+
+// Statement history. One row per billing cycle, projected or real. The day-of-
+// month integers on `credit_cards` (statement_day, payment_due_day) are being
+// phased out — they model "same day every month", which real issuers (Chase,
+// Amex, etc.) don't actually follow: close dates shift for weekends, holidays,
+// and Fed maintenance within a ±4-day envelope, and users historically could
+// save combinations that produced a sub-21-day grace period (regulatory
+// minimum on any real card). This table stores the actual close and due
+// calendar dates per cycle, mirroring how issuers themselves store statements,
+// and unlocks per-cycle audit (late-payment detection, paid-in-full checks,
+// grace-period validation) that the integer model couldn't support.
+export const creditCardCycles = pgTable(
+  "credit_card_cycles",
+  {
+    id: text("id").primaryKey(),
+    cardId: text("card_id")
+      .notNull()
+      .references(() => creditCards.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Civil dates (calendar day, no TZ) copied from the user's statement or
+    // projected forward from the card's day-of-month integers during Phase 1.
+    cycleCloseDate: date("cycle_close_date").notNull(),
+    paymentDueDate: date("payment_due_date").notNull(),
+    // Populated once the statement is issued. Nullable until then — a
+    // projected cycle doesn't know what the balance will be.
+    statementBalance: numeric("statement_balance", { precision: 14, scale: 2 }),
+    minimumPayment: numeric("minimum_payment", { precision: 14, scale: 2 }),
+    // Running total of payments allocated to this cycle. Auto-populated in a
+    // future phase by summing transfer transactions dated between
+    // cycle_close_date and payment_due_date. Default 0 so SQL aggregation
+    // works without coalesce on day one.
+    amountPaid: numeric("amount_paid", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    // Projected = estimate shown to the user (e.g. next upcoming cycle before
+    // the statement arrives). Real = locked cycle derived from a real
+    // statement. Only projected cycles are freely editable by the form; real
+    // cycles are historical artifacts and shouldn't be mutated except via the
+    // explicit "correct this statement" flow (Phase 3).
+    isProjected: boolean("is_projected").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
+  },
+  (t) => ({
+    cardIdx: index("ccc_card_idx").on(t.cardId),
+    userIdx: index("ccc_user_idx").on(t.userId),
+    // Speeds up "find the next upcoming cycle for this card" — common read.
+    cardDueIdx: index("ccc_card_due_idx").on(t.cardId, t.paymentDueDate),
+  })
+);
+
+export type CreditCardCycle = typeof creditCardCycles.$inferSelect;
+export type NewCreditCardCycle = typeof creditCardCycles.$inferInsert;

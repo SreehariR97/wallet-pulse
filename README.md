@@ -370,6 +370,14 @@ When a feature ships that adds new schema AND depends on seeded rows for existin
 
    Idempotent — every row is gated by a `(userId, name)` existence check. New users created after this deploy pick up the categories automatically via the existing `seedDefaultCategoriesForUser()` call in registration.
 
+3. **Backfill credit-card cycle history.** The `credit_card_cycles` table (added in migration `0006`) stores one row per billing cycle, replacing the brittle day-of-month integer model on `credit_cards`. Cards that existed before this migration need one projected cycle row each — run:
+
+   ```bash
+   DATABASE_URL="postgres://..." pnpm tsx scripts/backfill-credit-card-cycles.ts
+   ```
+
+   Idempotent — gated by a per-card existence check. The script also warns + adjusts any card whose `(statement_day, payment_due_day)` integers produce an out-of-range grace period (< 10 or > 40 days), a sign the user configured the due day assuming it refers to *next* month's calendar day.
+
 **No new environment variables** are required for the credit-cards + remittances feature. The existing `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `AUTH_TRUST_HOST` set cover everything.
 
 Future feature PRs that need the same treatment should drop a similar `scripts/backfill-<feature>.ts` and add a bullet here + an entry in [FOLLOWUPS.md](FOLLOWUPS.md) under **Deployment notes**.

@@ -43,6 +43,13 @@
       "when": 1776445230000,
       "tag": "0005_trgm_search_index",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776616561791,
+      "tag": "0006_colossal_odin",
+      "breakpoints": true
     }
   ]
 }
