@@ -60,7 +60,7 @@ export function DashboardView({ userName, currency }: { userName: string; curren
         title={`Hi, ${userName.split(" ")[0] || userName} 👋`}
         description="Here's your financial snapshot"
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
             <div className="flex items-center rounded-lg border border-border bg-background">
               <Button size="icon" variant="ghost" onClick={range.prev} aria-label="Previous month" className="h-8 w-8">
                 <ChevronLeft className="h-4 w-4" />
