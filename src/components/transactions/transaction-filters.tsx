@@ -243,11 +243,11 @@ export function TransactionFilters({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="mb-2 block text-xs">Min amount</Label>
-                <Input type="number" step="0.01" value={values.minAmount ?? ""} onChange={(e) => onChange({ ...values, minAmount: e.target.value || undefined })} placeholder="0" />
+                <Input type="number" step="0.01" min="0" max="99999999999.99" value={values.minAmount ?? ""} onChange={(e) => onChange({ ...values, minAmount: e.target.value || undefined })} placeholder="0" />
               </div>
               <div>
                 <Label className="mb-2 block text-xs">Max amount</Label>
-                <Input type="number" step="0.01" value={values.maxAmount ?? ""} onChange={(e) => onChange({ ...values, maxAmount: e.target.value || undefined })} placeholder="999" />
+                <Input type="number" step="0.01" min="0" max="99999999999.99" value={values.maxAmount ?? ""} onChange={(e) => onChange({ ...values, maxAmount: e.target.value || undefined })} placeholder="999" />
               </div>
             </div>
             <div>

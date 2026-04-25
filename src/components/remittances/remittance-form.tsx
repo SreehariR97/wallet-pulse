@@ -156,6 +156,7 @@ export function RemittanceForm({
                   type="number"
                   step="0.01"
                   min="0.01"
+                  max="99999999999.99"
                   required
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
@@ -211,6 +212,7 @@ export function RemittanceForm({
                 type="number"
                 step="0.000001"
                 min="0"
+                max="999999.999999"
                 required
                 placeholder="83.123456"
                 value={fxRate}
@@ -224,6 +226,7 @@ export function RemittanceForm({
                 type="number"
                 step="0.01"
                 min="0"
+                max="99999999.9999"
                 required
                 placeholder="4.99"
                 value={fee}

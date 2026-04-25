@@ -133,6 +133,7 @@ export function SettingsView({ initial }: { initial: Profile }) {
                     type="number"
                     step="0.01"
                     min="0"
+                    max="99999999999.99"
                     value={monthlyBudget}
                     onChange={(e) => setMonthlyBudget(e.target.value)}
                     placeholder="e.g. 3000"
