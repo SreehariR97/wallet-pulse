@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { formatCompactCurrency, formatCurrency } from "@/lib/utils";
+import { formatCompactCurrency, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
 import { TOOLTIP_BG, TOOLTIP_BORDER } from "./palette";
 
 export interface CategorySlice {
@@ -82,7 +82,13 @@ export function CategoryDonut({
           </div>
         </div>
       </div>
-      <ul className="flex-1 space-y-2 text-sm">
+      {/*
+        min-w-0 lets this ul shrink below its min-content width — without it,
+        a flex item defaults to min-width: min-content, so a $10,000,000.00
+        amount inside one of the legend rows pushes the whole ul wider than
+        the card on dashboard widths.
+      */}
+      <ul className="min-w-0 flex-1 space-y-2 text-sm">
         {data.slice(0, 8).map((s) => {
           const pct = total ? (s.total / total) * 100 : 0;
           return (
@@ -94,9 +100,14 @@ export function CategoryDonut({
                   {s.name}
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-right tabular-nums">
+              <div className="flex shrink-0 items-center gap-3 text-right tabular-nums">
                 <span className="text-xs font-[460] text-muted-foreground">{pct.toFixed(0)}%</span>
-                <span className="font-[540]">{formatCurrency(s.total, currency)}</span>
+                <span
+                  className="whitespace-nowrap font-[540]"
+                  title={formatCurrency(s.total, currency)}
+                >
+                  {formatCurrencyAuto(s.total, currency)}
+                </span>
               </div>
             </li>
           );

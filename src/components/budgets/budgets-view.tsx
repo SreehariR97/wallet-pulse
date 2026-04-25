@@ -373,10 +373,13 @@ function BudgetDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={OVERALL_VALUE}>🎯 Overall (all expenses)</SelectItem>
+                <SelectItem value={OVERALL_VALUE}>
+                  <span className="mr-2">🎯</span>Overall (all expenses)
+                </SelectItem>
                 {expenseCategories.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.icon} {c.name}
+                    <span className="mr-2">{c.icon}</span>
+                    {c.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -393,6 +396,7 @@ function BudgetDialog({
                   type="number"
                   step="0.01"
                   min="0"
+                  max="99999999999.99"
                   required
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}

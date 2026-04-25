@@ -169,6 +169,7 @@ export function CardForm({
               type="number"
               step="0.01"
               min="1"
+              max="99999999999.99"
               required
               placeholder="10000"
               value={creditLimit}
@@ -213,6 +214,7 @@ export function CardForm({
                 type="number"
                 step="0.01"
                 min="0"
+                max="99999999999.99"
                 placeholder="$"
                 value={statementBalance}
                 onChange={(e) => setStatementBalance(e.target.value)}
@@ -225,6 +227,7 @@ export function CardForm({
                 type="number"
                 step="0.01"
                 min="0"
+                max="99999999999.99"
                 placeholder="$"
                 value={minimumPayment}
                 onChange={(e) => setMinimumPayment(e.target.value)}

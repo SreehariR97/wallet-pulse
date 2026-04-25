@@ -283,7 +283,7 @@ function CategoryDialog({
           </div>
           <div className="grid gap-1.5">
             <Label>Monthly budget (optional)</Label>
-            <Input type="number" step="0.01" min="0" value={budgetLimit} onChange={(e) => setBudgetLimit(e.target.value)} placeholder="e.g. 500" />
+            <Input type="number" step="0.01" min="0" max="99999999999.99" value={budgetLimit} onChange={(e) => setBudgetLimit(e.target.value)} placeholder="e.g. 500" />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
