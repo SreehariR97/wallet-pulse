@@ -18,7 +18,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartCard } from "@/components/charts/chart-container";
 import { useCategories } from "@/stores/categories";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 interface BudgetRow {
@@ -189,19 +189,34 @@ export function BudgetsView({ currency }: { currency: string }) {
                     </div>
 
                     <div className="mt-5">
-                      <div className="flex items-baseline justify-between">
-                        <span className="font-heading text-[26px] font-[540] leading-[1] tracking-[-0.02em] tabular-nums">
-                          {formatCurrency(b.spent, currency)}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span
+                          className="min-w-0 truncate font-heading text-[26px] font-[540] leading-[1] tracking-[-0.02em] tabular-nums"
+                          title={formatCurrency(b.spent, currency)}
+                        >
+                          {formatCurrencyAuto(b.spent, currency)}
                         </span>
-                        <span className="text-[13px] font-[460] text-muted-foreground">of {formatCurrency(b.amount, currency)}</span>
+                        <span
+                          className="shrink-0 whitespace-nowrap text-[13px] font-[460] text-muted-foreground"
+                          title={formatCurrency(b.amount, currency)}
+                        >
+                          of {formatCurrencyAuto(b.amount, currency)}
+                        </span>
                       </div>
                       <Progress value={clamped} className="mt-3" indicatorClassName={cn(color, pct >= 100 && "animate-pulse")} />
-                      <div className="mt-2 flex justify-between text-[11px] font-[500] text-muted-foreground">
+                      <div className="mt-2 flex justify-between gap-2 text-[11px] font-[500] text-muted-foreground">
                         <span className="tabular-nums">{pct.toFixed(0)}% used</span>
-                        <span className="tabular-nums">
+                        <span
+                          className="truncate tabular-nums"
+                          title={
+                            pct >= 100
+                              ? `${formatCurrency(b.spent - b.amount, currency)} over`
+                              : `${formatCurrency(remaining, currency)} left`
+                          }
+                        >
                           {pct >= 100
-                            ? `${formatCurrency(b.spent - b.amount, currency)} over`
-                            : `${formatCurrency(remaining, currency)} left`}
+                            ? `${formatCurrencyAuto(b.spent - b.amount, currency)} over`
+                            : `${formatCurrencyAuto(remaining, currency)} left`}
                         </span>
                       </div>
                     </div>

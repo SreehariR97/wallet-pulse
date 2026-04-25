@@ -1,7 +1,7 @@
 "use client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCurrency, formatFxRate } from "@/lib/utils";
+import { formatCurrency, formatCurrencyAuto, formatFxRate } from "@/lib/utils";
 import { serviceLabel } from "./service-badge";
 
 export interface StatsData {
@@ -54,8 +54,11 @@ export function RemittanceStats({
           <span className="text-[11px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">
             Sent this month
           </span>
-          <div className="mt-3 font-heading text-[32px] font-[540] leading-[1] tracking-[-0.022em] tabular-nums">
-            {formatCurrency(mtd, currency)}
+          <div
+            className="mt-3 font-heading text-[24px] sm:text-[28px] md:text-[32px] font-[540] leading-[1] tracking-[-0.022em] tabular-nums"
+            title={formatCurrency(mtd, currency)}
+          >
+            {formatCurrencyAuto(mtd, currency)}
           </div>
           <div className="mt-2 text-[12px] font-[460] text-muted-foreground">
             Month-to-date
@@ -68,8 +71,11 @@ export function RemittanceStats({
           <span className="text-[11px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">
             Fees this year
           </span>
-          <div className="mt-3 font-heading text-[32px] font-[540] leading-[1] tracking-[-0.022em] tabular-nums">
-            {formatCurrency(ytdFees, currency)}
+          <div
+            className="mt-3 font-heading text-[24px] sm:text-[28px] md:text-[32px] font-[540] leading-[1] tracking-[-0.022em] tabular-nums"
+            title={formatCurrency(ytdFees, currency)}
+          >
+            {formatCurrencyAuto(ytdFees, currency)}
           </div>
           <div className="mt-2 text-[12px] font-[460] text-muted-foreground">
             Year-to-date across all services

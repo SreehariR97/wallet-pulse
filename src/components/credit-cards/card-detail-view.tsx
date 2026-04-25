@@ -37,7 +37,7 @@ import { PayCardDialog } from "./pay-card-dialog";
 import { MarkStatementIssuedDialog, type MarkStatementIssuedInitial } from "./mark-statement-issued-dialog";
 import { CycleHistoryList } from "./cycle-history-list";
 import type { CreditCardDetailDTO, CreditCardCycleRowDTO, TransactionListItem } from "@/types";
-import { formatCurrency, formatUtcDay } from "@/lib/utils";
+import { formatCurrency, formatCurrencyAuto, formatUtcDay } from "@/lib/utils";
 
 type SortKey = "date" | "amount" | "description" | "createdAt";
 type SortOrder = "asc" | "desc";
@@ -362,12 +362,15 @@ export function CardDetailView({
       <Card>
         <CardContent className="p-5">
           <div className="grid gap-5 md:grid-cols-[1.4fr_1fr_1fr] md:items-center">
-            <div>
+            <div className="min-w-0">
               <div className="text-[11px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">
                 Balance
               </div>
-              <div className="mt-1 font-heading text-[36px] font-[540] leading-[1] tracking-[-0.025em] tabular-nums">
-                {formatCurrency(Math.max(0, card.balance), currency)}
+              <div
+                className="mt-1 font-heading text-[28px] sm:text-[32px] md:text-[36px] font-[540] leading-[1] tracking-[-0.025em] tabular-nums"
+                title={formatCurrency(Math.max(0, card.balance), currency)}
+              >
+                {formatCurrencyAuto(Math.max(0, card.balance), currency)}
               </div>
               <div className="mt-3 space-y-1.5">
                 <Progress value={util} indicatorClassName={utilBar(util)} />

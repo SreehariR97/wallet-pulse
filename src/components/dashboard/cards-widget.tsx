@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { cn, formatCurrency, formatCivilDate } from "@/lib/utils";
+import { cn, formatCurrency, formatCurrencyAuto, formatCivilDate } from "@/lib/utils";
 import type { CreditCardSummary } from "@/components/credit-cards/card-tile";
 
 function utilBar(pct: number) {
@@ -69,10 +69,13 @@ export function CardsWidget({
                     </span>
                   </div>
                   <div className="mt-3 flex items-baseline justify-between gap-2">
-                    <span className="font-heading text-[22px] font-[540] leading-[1.05] tracking-[-0.02em] tabular-nums">
-                      {formatCurrency(Math.max(0, c.balance), currency)}
+                    <span
+                      className="min-w-0 truncate font-heading text-[22px] font-[540] leading-[1.05] tracking-[-0.02em] tabular-nums"
+                      title={formatCurrency(Math.max(0, c.balance), currency)}
+                    >
+                      {formatCurrencyAuto(Math.max(0, c.balance), currency)}
                     </span>
-                    <span className="text-[11px] font-[460] text-muted-foreground tabular-nums">
+                    <span className="shrink-0 text-[11px] font-[460] text-muted-foreground tabular-nums">
                       {util.toFixed(0)}%
                     </span>
                   </div>

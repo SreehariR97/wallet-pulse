@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn, formatCurrency, formatCivilDate } from "@/lib/utils";
+import { cn, formatCurrency, formatCurrencyAuto, formatCivilDate } from "@/lib/utils";
 
 export interface CreditCardSummary {
   id: string;
@@ -136,14 +136,18 @@ export function CardTile({
           <div className="mt-1 flex items-baseline justify-between gap-4">
             <span
               className={cn(
-                "font-heading text-[28px] font-[540] leading-[1.05] tracking-[-0.022em] tabular-nums",
+                "min-w-0 truncate font-heading text-[28px] font-[540] leading-[1.05] tracking-[-0.022em] tabular-nums",
                 card.balance > 0 ? "text-foreground" : "text-muted-foreground",
               )}
+              title={formatCurrency(Math.max(0, card.balance), currency)}
             >
-              {formatCurrency(Math.max(0, card.balance), currency)}
+              {formatCurrencyAuto(Math.max(0, card.balance), currency)}
             </span>
-            <span className="text-[13px] font-[460] text-muted-foreground tabular-nums">
-              {formatCurrency(card.creditLimit, currency)}
+            <span
+              className="shrink-0 text-[13px] font-[460] text-muted-foreground tabular-nums"
+              title={formatCurrency(card.creditLimit, currency)}
+            >
+              {formatCurrencyAuto(card.creditLimit, currency)}
             </span>
           </div>
 
