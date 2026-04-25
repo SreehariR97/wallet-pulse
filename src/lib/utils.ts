@@ -8,11 +8,11 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatCurrency(amount: number, currency = "USD", signed = false): string {
   const abs = Math.abs(amount);
+  // Let Intl pick the per-currency default precision: 2dp for USD/EUR/GBP/INR,
+  // 0dp for JPY/KRW/VND, 3dp for BHD/KWD. Hardcoding 2 caused "¥10.00" bugs.
   const formatted = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
   }).format(abs);
   if (!signed) return formatted;
   if (amount === 0) return formatted;
@@ -20,6 +20,9 @@ export function formatCurrency(amount: number, currency = "USD", signed = false)
 }
 
 export function formatCompactCurrency(amount: number, currency = "USD"): string {
+  // maximumFractionDigits:1 caps the "$1.2K" decimal in compact mode.
+  // We deliberately don't set a minimum — Intl already suppresses trailing
+  // zeros for zero-decimal currencies (JPY → "¥10M", not "¥10.0M").
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
