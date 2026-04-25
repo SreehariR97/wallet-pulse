@@ -373,10 +373,13 @@ function BudgetDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={OVERALL_VALUE}>🎯 Overall (all expenses)</SelectItem>
+                <SelectItem value={OVERALL_VALUE}>
+                  <span className="mr-2">🎯</span>Overall (all expenses)
+                </SelectItem>
                 {expenseCategories.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.icon} {c.name}
+                    <span className="mr-2">{c.icon}</span>
+                    {c.name}
                   </SelectItem>
                 ))}
               </SelectContent>
