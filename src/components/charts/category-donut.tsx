@@ -95,10 +95,17 @@ export function CategoryDonut({
             <li key={s.categoryId} className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="truncate font-[460]">
-                  <span className="mr-1">{s.icon}</span>
-                  {s.name}
-                </span>
+                {/*
+                  Icon must live OUTSIDE the truncating span. When the
+                  legend gets very narrow (dashboard's lg:col-span-2-of-5
+                  placement at 1024-1500px), `truncate` was collapsing
+                  the icon and name together — both vanished as a unit
+                  and users had no way to identify the slice. Splitting
+                  ensures the emoji stays a visible anchor even when the
+                  name truncates to zero width.
+                */}
+                <span className="mr-1.5 shrink-0">{s.icon}</span>
+                <span className="truncate font-[460]">{s.name}</span>
               </div>
               <div className="flex shrink-0 items-center gap-3 text-right tabular-nums">
                 <span className="text-xs font-[460] text-muted-foreground">{pct.toFixed(0)}%</span>
