@@ -61,7 +61,7 @@ export function RecentTransactions({
             </div>
           </div>
           <div className={cn(
-            "tabular-nums text-sm font-[540]",
+            "whitespace-nowrap tabular-nums text-sm font-[540]",
             t.type === "income" ? "text-success" : t.type === "expense" ? "text-foreground" : "text-foreground"
           )}>
             {t.type === "income" ? "+" : t.type === "expense" ? "-" : ""}

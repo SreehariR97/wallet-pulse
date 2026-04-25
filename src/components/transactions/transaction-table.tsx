@@ -133,7 +133,7 @@ export function TransactionTable({
                     )}
                   >
                     <div className="flex flex-col items-end leading-tight">
-                      <span>
+                      <span className="whitespace-nowrap">
                         {amountSign(t.type)}
                         {formatCurrency(t.amount, t.currency ?? currency)}
                       </span>
