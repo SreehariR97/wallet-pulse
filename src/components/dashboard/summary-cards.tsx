@@ -38,10 +38,24 @@ export function SummaryCards({ data, currency, loading }: { data: SummaryData | 
     },
     {
       label: "Savings rate",
-      value: data ? formatPercent(data.savingsRate) : "—",
+      // Render guard: a slightly negative rate (e.g. -15%) is informative —
+      // "you spent 15% more than you earned". A massively negative rate
+      // ("-153,659.3%") is mathematically correct but visually meaningless,
+      // so we collapse to "—" + an explanatory sub-label below -100%.
+      value: data
+        ? data.income > 0 && data.savingsRate >= -100
+          ? formatPercent(data.savingsRate)
+          : "—"
+        : "—",
       icon: PiggyBank,
       tone: "savings",
-      sub: data && data.income > 0 ? "of income saved" : "No income this month",
+      sub: data
+        ? data.income === 0
+          ? "No income this month"
+          : data.savingsRate < -100
+            ? "Spending exceeds income"
+            : "of income saved"
+        : undefined,
     },
   ];
 

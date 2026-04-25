@@ -33,16 +33,25 @@ export function CategoryDonut({
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-[1fr_1.2fr] md:items-center">
-      <div className="relative">
-        <ResponsiveContainer width="100%" height={240}>
+    <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-6">
+      {/*
+        Fixed 200x200 square so the donut always has room for its full
+        diameter. Previously this was a fluid 1fr column inside a
+        md:grid-cols-[1fr_1.2fr] grid — at 1300-1500px viewports the column
+        resolved to ~160px, narrower than the 190px pie diameter, and
+        Recharts clipped the circle at left+right leaving two arcs.
+        Radii are now percentages so the pie scales with the container if
+        we ever resize it.
+      */}
+      <div className="relative mx-auto h-[200px] w-[200px] shrink-0 md:mx-0">
+        <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={data}
               dataKey="total"
               nameKey="name"
-              innerRadius={60}
-              outerRadius={95}
+              innerRadius="55%"
+              outerRadius="92%"
               paddingAngle={2}
               stroke="transparent"
               onClick={(d: any) => onSliceClick?.(d.payload)}
@@ -66,14 +75,14 @@ export function CategoryDonut({
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <div className="text-[10px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">Total</div>
           <div
-            className="mt-0.5 max-w-[100px] text-center font-heading text-[22px] font-[540] leading-[1] tracking-[-0.02em] tabular-nums"
+            className="mt-0.5 max-w-[120px] text-center font-heading text-[20px] font-[540] leading-[1] tracking-[-0.02em] tabular-nums"
             title={formatCurrency(total, currency)}
           >
             {formatCompactCurrency(total, currency)}
           </div>
         </div>
       </div>
-      <ul className="space-y-2 text-sm">
+      <ul className="flex-1 space-y-2 text-sm">
         {data.slice(0, 8).map((s) => {
           const pct = total ? (s.total / total) * 100 : 0;
           return (
