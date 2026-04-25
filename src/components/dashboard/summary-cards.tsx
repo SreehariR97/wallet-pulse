@@ -54,7 +54,9 @@ export function SummaryCards({ data, currency, loading }: { data: SummaryData | 
           ? "No income this month"
           : data.savingsRate < -100
             ? "Spending exceeds income"
-            : "of income saved"
+            : data.savingsRate < 0
+              ? "Spent more than earned"
+              : "of income saved"
         : undefined,
     },
   ];
