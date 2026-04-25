@@ -8,11 +8,11 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatCurrency(amount: number, currency = "USD", signed = false): string {
   const abs = Math.abs(amount);
+  // Let Intl pick the per-currency default precision: 2dp for USD/EUR/GBP/INR,
+  // 0dp for JPY/KRW/VND, 3dp for BHD/KWD. Hardcoding 2 caused "¥10.00" bugs.
   const formatted = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
   }).format(abs);
   if (!signed) return formatted;
   if (amount === 0) return formatted;
@@ -20,12 +20,36 @@ export function formatCurrency(amount: number, currency = "USD", signed = false)
 }
 
 export function formatCompactCurrency(amount: number, currency = "USD"): string {
+  // maximumFractionDigits:1 caps the "$1.2K" decimal in compact mode.
+  // We deliberately don't set a minimum — Intl already suppresses trailing
+  // zeros for zero-decimal currencies (JPY → "¥10M", not "¥10.0M").
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(amount);
+}
+
+/**
+ * Format an amount with full precision when it fits comfortably in a card,
+ * and switch to compact notation ("$10M") once the magnitude crosses
+ * `compactThreshold` (default 1,000,000). Use this anywhere the container
+ * has a fixed width and a value like `$10,000,000.00` would clip — pair
+ * with a `title={formatCurrency(...)}` for the precise value on hover.
+ */
+export function formatCurrencyAuto(
+  amount: number,
+  currency = "USD",
+  options?: { signed?: boolean; compactThreshold?: number },
+): string {
+  const { signed = false, compactThreshold = 1_000_000 } = options ?? {};
+  if (Math.abs(amount) < compactThreshold) {
+    return formatCurrency(amount, currency, signed);
+  }
+  const compact = formatCompactCurrency(Math.abs(amount), currency);
+  if (!signed || amount === 0) return compact;
+  return amount > 0 ? `+${compact}` : `-${compact}`;
 }
 
 export function formatPercent(value: number): string {

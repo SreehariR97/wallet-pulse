@@ -225,6 +225,10 @@ export function TransactionForm({
             type="number"
             step="0.01"
             min="0"
+            // Matches the Zod cap in src/lib/validations/transaction.ts.
+            // Native bound surfaces the error before submit instead of
+            // letting users type 15 digits and only see it on save.
+            max="99999999999.99"
             required
             className={amountClass}
             value={values.amount}
