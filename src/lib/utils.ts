@@ -28,6 +28,27 @@ export function formatCompactCurrency(amount: number, currency = "USD"): string 
   }).format(amount);
 }
 
+/**
+ * Format an amount with full precision when it fits comfortably in a card,
+ * and switch to compact notation ("$10M") once the magnitude crosses
+ * `compactThreshold` (default 1,000,000). Use this anywhere the container
+ * has a fixed width and a value like `$10,000,000.00` would clip — pair
+ * with a `title={formatCurrency(...)}` for the precise value on hover.
+ */
+export function formatCurrencyAuto(
+  amount: number,
+  currency = "USD",
+  options?: { signed?: boolean; compactThreshold?: number },
+): string {
+  const { signed = false, compactThreshold = 1_000_000 } = options ?? {};
+  if (Math.abs(amount) < compactThreshold) {
+    return formatCurrency(amount, currency, signed);
+  }
+  const compact = formatCompactCurrency(Math.abs(amount), currency);
+  if (!signed || amount === 0) return compact;
+  return amount > 0 ? `+${compact}` : `-${compact}`;
+}
+
 export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }

@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { formatCurrency } from "@/lib/utils";
+import { formatCompactCurrency, formatCurrency } from "@/lib/utils";
 import { TOOLTIP_BG, TOOLTIP_BORDER } from "./palette";
 
 export interface CategorySlice {
@@ -65,7 +65,12 @@ export function CategoryDonut({
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <div className="text-[10px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">Total</div>
-          <div className="mt-0.5 font-heading text-[22px] font-[540] leading-[1] tracking-[-0.02em] tabular-nums">{formatCurrency(total, currency)}</div>
+          <div
+            className="mt-0.5 max-w-[100px] text-center font-heading text-[22px] font-[540] leading-[1] tracking-[-0.02em] tabular-nums"
+            title={formatCurrency(total, currency)}
+          >
+            {formatCompactCurrency(total, currency)}
+          </div>
         </div>
       </div>
       <ul className="space-y-2 text-sm">

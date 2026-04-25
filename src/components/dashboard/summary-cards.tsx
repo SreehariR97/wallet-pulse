@@ -2,7 +2,7 @@
 import { ArrowDownLeft, ArrowUpRight, PiggyBank } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn, formatCurrency, formatPercent } from "@/lib/utils";
+import { cn, formatCurrency, formatCurrencyAuto, formatPercent } from "@/lib/utils";
 
 export interface SummaryData {
   income: number;
@@ -17,19 +17,22 @@ export function SummaryCards({ data, currency, loading }: { data: SummaryData | 
   const secondary: Array<{
     label: string;
     value: string;
+    title?: string;
     icon: React.ElementType;
     tone: "income" | "expense" | "savings";
     sub?: string;
   }> = [
     {
       label: "Income",
-      value: data ? formatCurrency(data.income, currency) : "—",
+      value: data ? formatCurrencyAuto(data.income, currency) : "—",
+      title: data ? formatCurrency(data.income, currency) : undefined,
       icon: ArrowDownLeft,
       tone: "income",
     },
     {
       label: "Expenses",
-      value: data ? formatCurrency(data.expense, currency) : "—",
+      value: data ? formatCurrencyAuto(data.expense, currency) : "—",
+      title: data ? formatCurrency(data.expense, currency) : undefined,
       icon: ArrowUpRight,
       tone: "expense",
     },
@@ -58,8 +61,11 @@ export function SummaryCards({ data, currency, loading }: { data: SummaryData | 
           {loading ? (
             <Skeleton className="mt-4 h-14 w-48" />
           ) : (
-            <div className="mt-3 font-heading text-[48px] font-[540] leading-[0.96] tracking-[-0.03em] tabular-nums">
-              {data ? formatCurrency(Math.abs(net), currency) : "—"}
+            <div
+              className="mt-3 font-heading text-[36px] sm:text-[42px] md:text-[48px] font-[540] leading-[0.96] tracking-[-0.03em] tabular-nums"
+              title={data ? formatCurrency(Math.abs(net), currency) : undefined}
+            >
+              {data ? formatCurrencyAuto(Math.abs(net), currency) : "—"}
             </div>
           )}
           <div className="mt-3 text-[13px] font-[460] leading-[1.4] text-muted-foreground">
@@ -78,14 +84,17 @@ export function SummaryCards({ data, currency, loading }: { data: SummaryData | 
           return (
             <Card key={item.label} className="overflow-hidden">
               <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">{item.label}</span>
-                  <Icon className="h-4 w-4 text-muted-foreground" />
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-[11px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">{item.label}</span>
+                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </div>
                 {loading ? (
                   <Skeleton className="mt-3 h-7 w-24" />
                 ) : (
-                  <div className="mt-2 font-heading text-[22px] font-[540] leading-[1.1] tracking-[-0.015em] tabular-nums">
+                  <div
+                    className="mt-2 font-heading text-[22px] font-[540] leading-[1.1] tracking-[-0.015em] tabular-nums"
+                    title={item.title}
+                  >
                     {item.value}
                   </div>
                 )}
