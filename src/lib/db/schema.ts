@@ -10,6 +10,8 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  unique,
+  check,
 } from "drizzle-orm/pg-core";
 
 const now = sql`now()`;
@@ -51,6 +53,12 @@ export const categories = pgTable(
   },
   (t) => ({
     userIdx: index("categories_user_idx").on(t.userId),
+    // One copy of each seeded default per user, so the GET backfill can't
+    // race itself into duplicates. User-created categories may share names.
+    defaultNameUniq: uniqueIndex("categories_user_default_name_uniq")
+      .on(t.userId, t.type, sql`lower(${t.name})`)
+      .where(sql`${t.isDefault}`),
+    typeCheck: check("categories_type_check", sql`${t.type} IN ('expense', 'income', 'loan', 'transfer')`),
   })
 );
 
@@ -106,6 +114,15 @@ export const transactions = pgTable(
     userCategoryIdx: index("tx_user_category_idx").on(t.userId, t.categoryId),
     userTypeIdx: index("tx_user_type_idx").on(t.userId, t.type),
     userCardIdx: index("tx_user_card_idx").on(t.userId, t.creditCardId),
+    // Leading-column indexes for the FKs, so deleting a category or card
+    // doesn't scan every transaction.
+    categoryIdx: index("tx_category_idx").on(t.categoryId),
+    cardIdx: index("tx_card_idx").on(t.creditCardId),
+    amountCheck: check("transactions_amount_positive", sql`${t.amount} > 0`),
+    typeCheck: check(
+      "transactions_type_check",
+      sql`${t.type} IN ('expense', 'income', 'transfer', 'loan_given', 'loan_taken', 'repayment_received', 'repayment_made')`,
+    ),
   })
 );
 
@@ -126,6 +143,14 @@ export const budgets = pgTable(
   },
   (t) => ({
     userIdx: index("budgets_user_idx").on(t.userId),
+    categoryIdx: index("budgets_category_idx").on(t.categoryId),
+    // One budget per category and period; NULLS NOT DISTINCT makes this
+    // cover the overall (category-less) budget too.
+    categoryPeriodUniq: unique("budgets_user_category_period_uniq")
+      .on(t.userId, t.categoryId, t.period)
+      .nullsNotDistinct(),
+    amountCheck: check("budgets_amount_positive", sql`${t.amount} > 0`),
+    periodCheck: check("budgets_period_check", sql`${t.period} IN ('weekly', 'monthly', 'yearly')`),
   })
 );
 
@@ -245,6 +270,10 @@ export const creditCardCycles = pgTable(
     userIdx: index("ccc_user_idx").on(t.userId),
     // Speeds up "find the next upcoming cycle for this card" — common read.
     cardDueIdx: index("ccc_card_due_idx").on(t.cardId, t.paymentDueDate),
+    // Invariants: one statement per close date, and exactly one projected
+    // (currently accruing) cycle per card.
+    cardCloseUniq: uniqueIndex("ccc_card_close_uniq").on(t.cardId, t.cycleCloseDate),
+    oneProjectedUniq: uniqueIndex("ccc_one_projected_per_card").on(t.cardId).where(sql`${t.isProjected}`),
   })
 );
 

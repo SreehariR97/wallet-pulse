@@ -73,7 +73,7 @@ export async function GET(req: Request) {
     .from(remittances)
     .innerJoin(transactions, eq(remittances.transactionId, transactions.id))
     .where(whereClause)
-    .orderBy(ordering)
+    .orderBy(ordering, asc(remittances.id))
     .limit(q.limit)
     .offset((q.page - 1) * q.limit);
 
@@ -118,6 +118,7 @@ export async function POST(req: Request) {
     .where(
       and(
         eq(categories.userId, auth.userId),
+        eq(categories.type, "transfer"),
         eq(categories.name, TRANSFER_CATEGORY_NAMES.internationalTransfer),
       ),
     )

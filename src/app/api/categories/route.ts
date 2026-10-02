@@ -25,15 +25,16 @@ function toCategoryDTO(c: typeof categories.$inferSelect): CategoryDTO {
 }
 
 /**
- * Seed any default categories that the user doesn't yet have.
- * Safe to call on every GET — only inserts rows that are missing.
- * This handles users that were created BEFORE new default categories
- * (like the "loan" ones) were introduced.
+ * Re-create the transfer categories the card-payment and remittance flows
+ * look up by name, for users created before they existed or who deleted
+ * them. Other defaults are seeded once at registration and stay deleted
+ * when the user deletes them. ON CONFLICT DO NOTHING (against the
+ * per-user unique index on default names) makes concurrent GETs safe.
  */
 async function backfillDefaults(userId: string, existing: Category[]) {
   const byKey = new Set(existing.map((c) => `${c.type}::${c.name.toLowerCase()}`));
   const missing = DEFAULT_CATEGORIES.filter(
-    (d) => !byKey.has(`${d.type}::${d.name.toLowerCase()}`)
+    (d) => d.type === "transfer" && !byKey.has(`${d.type}::${d.name.toLowerCase()}`)
   );
   if (missing.length === 0) return [];
 
@@ -47,8 +48,7 @@ async function backfillDefaults(userId: string, existing: Category[]) {
     isDefault: true,
     sortOrder: existing.length + i,
   }));
-  await db.insert(categories).values(rows);
-  return rows;
+  return db.insert(categories).values(rows).onConflictDoNothing().returning();
 }
 
 export async function GET() {

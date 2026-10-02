@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { budgets, categories } from "@/lib/db/schema";
 import { budgetUpdateSchema } from "@/lib/validations/budget";
-import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import { ok, fail, zodFail, requireUser, isUniqueViolation } from "@/lib/api";
 import type { BudgetDTO, DeletedIdDTO } from "@/types";
 
 type BudgetPatch = Partial<
@@ -56,8 +56,13 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (b.startDate !== undefined) patch.startDate = b.startDate;
   if (b.endDate !== undefined) patch.endDate = b.endDate ?? null;
 
-  const [row] = await db.update(budgets).set(patch).where(eq(budgets.id, params.id)).returning();
-  return ok(toBudgetDTO(row) satisfies BudgetDTO);
+  try {
+    const [row] = await db.update(budgets).set(patch).where(eq(budgets.id, params.id)).returning();
+    return ok(toBudgetDTO(row) satisfies BudgetDTO);
+  } catch (err) {
+    if (isUniqueViolation(err)) return fail(409, "A budget for this category and period already exists");
+    throw err;
+  }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {

@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import * as schema from "@/lib/db/schema";
+import { categories, users } from "@/lib/db/schema";
 import { registerSchema } from "@/lib/validations/auth";
-import { seedDefaultCategoriesForUser } from "@/lib/db/seed";
-import { fail, zodFail } from "@/lib/api";
+import { defaultCategoryRows } from "@/lib/db/seed";
+import { fail, zodFail, isUniqueViolation } from "@/lib/api";
 import { RATE_LIMITS, clientIp, consumeRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
@@ -27,8 +29,31 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
   const id = randomUUID();
-  await db.insert(users).values({ id, name: parsed.data.name, email, passwordHash });
-  await seedDefaultCategoriesForUser(id);
+  const userValues = { id, name: parsed.data.name, email, passwordHash };
+  const categoryRows = defaultCategoryRows(id);
+
+  // User + default categories in one atomic unit: a failure halfway used to
+  // leave a user with no categories for good (the GET backfill skips users
+  // with zero categories). Dispatch per CLAUDE.md.
+  try {
+    const maybeBatch = db as { batch?: unknown };
+    if (typeof maybeBatch.batch === "function") {
+      const neonDb = db as NeonHttpDatabase<typeof schema>;
+      await neonDb.batch([
+        neonDb.insert(users).values(userValues),
+        neonDb.insert(categories).values(categoryRows),
+      ]);
+    } else {
+      await db.transaction(async (trx) => {
+        await trx.insert(users).values(userValues);
+        await trx.insert(categories).values(categoryRows);
+      });
+    }
+  } catch (err) {
+    // Two sign-ups for the same email racing past the check above.
+    if (isUniqueViolation(err)) return fail(409, "An account with this email already exists");
+    throw err;
+  }
 
   return NextResponse.json({ data: { id, email } }, { status: 201 });
 }
