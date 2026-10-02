@@ -57,6 +57,36 @@ export async function makeTestDb(): Promise<TestDb> {
 }
 
 /**
+ * Like makeTestDb, but shaped like the production neon-http client: it has
+ * `batch()` and `transaction()` throws, so routes take their `db.batch`
+ * branch. PGlite is a single connection, so BEGIN/COMMIT around the
+ * awaited queries gives the same all-or-nothing semantics as Neon's
+ * implicit batch transaction.
+ */
+export async function makeNeonLikeTestDb(): Promise<TestDb> {
+  const client = new PGlite();
+  const db = drizzle(client, { schema });
+  await migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle") });
+  return Object.assign(db, {
+    async batch(queries: readonly PromiseLike<unknown>[]) {
+      await client.exec("BEGIN");
+      try {
+        const results: unknown[] = [];
+        for (const q of queries) results.push(await q);
+        await client.exec("COMMIT");
+        return results;
+      } catch (err) {
+        await client.exec("ROLLBACK");
+        throw err;
+      }
+    },
+    transaction(): never {
+      throw new Error("No transactions support in neon-http driver");
+    },
+  });
+}
+
+/**
  * Seeds users A and B, plus a single "expense"-type category owned by each,
  * matching the TEST_USERS constants. Callers layer on resource-specific seeds.
  */
