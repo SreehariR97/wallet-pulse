@@ -130,7 +130,11 @@ export async function GET(req: Request) {
       Frequency: r.recurringFrequency ?? "",
       Tags: r.tags ?? "",
     })),
-    { quotes: true }
+    // escapeFormulae prefixes cells starting with = + - @ (tab/CR) with an
+    // apostrophe so a description like `=HYPERLINK(...)` from an imported
+    // bank CSV can't execute when the export is opened in a spreadsheet.
+    // Numeric cells (Amount) are left alone.
+    { quotes: true, escapeFormulae: true }
   );
 
   return new Response(csv, {
