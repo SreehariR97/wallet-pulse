@@ -67,7 +67,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 
   // Re-verify card ownership. Passing null explicitly clears the link.
+  // Linking to an archived card is refused, but a transaction already on
+  // one keeps it: the edit form always resends creditCardId, and fixing a
+  // typo on an old transaction shouldn't fail.
   if (t.creditCardId) {
+    const keepsExistingCard = t.creditCardId === existing.creditCardId;
     const [card] = await db
       .select({ id: creditCards.id })
       .from(creditCards)
@@ -75,7 +79,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         and(
           eq(creditCards.id, t.creditCardId),
           eq(creditCards.userId, auth.userId),
-          eq(creditCards.isActive, true),
+          keepsExistingCard ? undefined : eq(creditCards.isActive, true),
         ),
       )
       .limit(1);

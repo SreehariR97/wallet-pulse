@@ -114,7 +114,9 @@ export async function GET(req: Request) {
     .leftJoin(categories, eq(transactions.categoryId, categories.id))
     .leftJoin(creditCards, eq(transactions.creditCardId, creditCards.id))
     .where(whereClause)
-    .orderBy(ordering)
+    // id as tiebreaker: rows sharing a date/amount otherwise come back in
+    // arbitrary order, so offset pages could repeat or skip them.
+    .orderBy(ordering, asc(transactions.id))
     .limit(q.limit)
     .offset((q.page - 1) * q.limit);
 
