@@ -152,6 +152,17 @@ The demo user ships with a handful of transactions and two budgets (Groceries $4
 | `pnpm db:seed` | Seed default categories + demo user |
 | `pnpm db:bootstrap-dev` | Create demo + sample users with seeded transactions (one-shot, idempotent) |
 
+### Continuous integration
+
+`.github/workflows/ci.yml` runs `lint`, `type-check`, `test:run` and `build`
+on Node 22 for every pull request and every push to `main`. No database or
+secrets are needed: API tests use in-memory PGlite, and the db client is
+lazy so the build never connects. To block merges on red CI, mark the
+**Lint, type-check, test, build** check as required under
+*Settings → Branches → Branch protection rules* for `main`.
+Dependabot (`.github/dependabot.yml`) opens a weekly grouped PR for
+minor/patch bumps and separate PRs for major versions.
+
 ---
 
 ## Project structure
