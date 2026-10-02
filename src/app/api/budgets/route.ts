@@ -55,7 +55,9 @@ export async function GET() {
       categoryColor: categories.color,
     })
     .from(budgets)
-    .leftJoin(categories, eq(budgets.categoryId, categories.id))
+    // Scope the join too, so a budget can never surface another user's
+    // category name/icon/color even if a foreign categoryId got stored.
+    .leftJoin(categories, and(eq(budgets.categoryId, categories.id), eq(categories.userId, auth.userId)))
     .where(eq(budgets.userId, auth.userId));
 
   const withSpent: BudgetListItemDTO[] = await Promise.all(

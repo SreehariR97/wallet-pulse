@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { budgets } from "@/lib/db/schema";
+import { budgets, categories } from "@/lib/db/schema";
 import { budgetUpdateSchema } from "@/lib/validations/budget";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import type { BudgetDTO, DeletedIdDTO } from "@/types";
@@ -39,6 +39,15 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   const parsed = budgetUpdateSchema.safeParse(body);
   if (!parsed.success) return zodFail(parsed.error);
   const b = parsed.data;
+
+  if (b.categoryId) {
+    const [cat] = await db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(and(eq(categories.id, b.categoryId), eq(categories.userId, auth.userId)))
+      .limit(1);
+    if (!cat) return fail(400, "Invalid category");
+  }
 
   const patch: BudgetPatch = {};
   if (b.categoryId !== undefined) patch.categoryId = b.categoryId;
