@@ -54,8 +54,11 @@
     --muted-foreground: 0 0% 72%;
     --accent: 258 90% 85%;
     --accent-foreground: 244 38% 16%;
-    --destructive: 0 62% 55%;
-    --destructive-foreground: 0 0% 100%;
+    /* Lighter red so red text clears WCAG AA on dark surfaces and on
+       destructive/15 tints (55% was 3.3:1); destructive buttons switch to
+       dark text, which reads 6.3:1 on this red (white would be 2.9:1). */
+    --destructive: 0 62% 68%;
+    --destructive-foreground: 244 38% 12%;
     --success: 150 30% 55%;
     --success-foreground: 0 0% 100%;
     --warning: 40 80% 60%;
