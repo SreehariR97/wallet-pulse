@@ -6,6 +6,7 @@ import * as schema from "@/lib/db/schema";
 import { creditCards, creditCardCycles, transactions } from "@/lib/db/schema";
 import { creditCardCreateSchema } from "@/lib/validations/credit-card";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import { nextProjectedCycleDates } from "@/lib/credit-cards";
 import type { CreditCardDTO, CreditCardListItemDTO } from "@/types";
 
 function toCreditCardDTO(c: typeof creditCards.$inferSelect): CreditCardDTO {
@@ -255,6 +256,17 @@ export async function POST(req: Request) {
     // still a projected framework.
     isProjected: !(hasBalance && hasMinPayment),
   };
+  // A card always has exactly one projected cycle: when the first cycle is a
+  // real statement, the one accruing now is created alongside it.
+  const nextCycleValues = cycleValues.isProjected
+    ? null
+    : {
+        id: randomUUID(),
+        cardId,
+        userId: auth.userId,
+        ...nextProjectedCycleDates(c.lastStatementCloseDate, c.paymentDueDate),
+        isProjected: true,
+      };
 
   try {
     // neon-http doesn't support db.transaction; use batch (atomic server-side
@@ -266,13 +278,15 @@ export async function POST(req: Request) {
       const neonDb = db as NeonHttpDatabase<typeof schema>;
       const [cardRows] = await neonDb.batch([
         neonDb.insert(creditCards).values(cardValues).returning(),
-        neonDb.insert(creditCardCycles).values(cycleValues),
+        neonDb.insert(creditCardCycles).values(nextCycleValues ? [cycleValues, nextCycleValues] : [cycleValues]),
       ]);
       row = cardRows[0];
     } else {
       const result = await db.transaction(async (trx) => {
         const [cardRow] = await trx.insert(creditCards).values(cardValues).returning();
-        await trx.insert(creditCardCycles).values(cycleValues);
+        await trx
+          .insert(creditCardCycles)
+          .values(nextCycleValues ? [cycleValues, nextCycleValues] : [cycleValues]);
         return cardRow;
       });
       row = result;

@@ -32,3 +32,27 @@ export function allocateCycleForPayment(
   }
   return null;
 }
+
+/**
+ * The projected cycle that follows a statement closing on `cycleCloseDate`:
+ * closes 30 days later and keeps the same grace period (days from close to
+ * due). Every path that turns a cycle into a real (issued) one must insert
+ * this alongside it, so the card always has exactly one projected cycle.
+ */
+export function nextProjectedCycleDates(
+  cycleCloseDate: string,
+  paymentDueDate: string,
+): { cycleCloseDate: string; paymentDueDate: string } {
+  const close = new Date(`${cycleCloseDate}T00:00:00Z`);
+  const graceDays = Math.round(
+    (new Date(`${paymentDueDate}T00:00:00Z`).getTime() - close.getTime()) / 86400000,
+  );
+  const nextClose = new Date(close);
+  nextClose.setUTCDate(nextClose.getUTCDate() + 30);
+  const nextDue = new Date(nextClose);
+  nextDue.setUTCDate(nextDue.getUTCDate() + graceDays);
+  return {
+    cycleCloseDate: nextClose.toISOString().slice(0, 10),
+    paymentDueDate: nextDue.toISOString().slice(0, 10),
+  };
+}

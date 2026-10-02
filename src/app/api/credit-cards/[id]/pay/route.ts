@@ -5,32 +5,22 @@
  * attached to the "Credit Card Payment" category, with creditCardId set to
  * this card. Amount positive; reduces the card's computed balance.
  *
- * Phase 4: the insert is batched atomically with per-cycle amountPaid
- * updates. We load the card's existing cycles + payments, synthesize the
- * about-to-insert payment on top, re-compute the minimal diff, and
- * dispatch [INSERT, ...UPDATEs] as a single atomic unit (batch on Neon,
- * transaction on pg). Card ownership is re-verified here — do not rely on
- * the FK to gate access.
+ * The insert runs in one atomic unit with the cycle re-allocation:
+ * [lock card, INSERT payment, reallocate cycles] (batch on Neon,
+ * transaction on pg). The card lock serializes concurrent payments so
+ * neither can overwrite the other's amount_paid. Card ownership is
+ * re-verified here — do not rely on the FK to gate access.
  */
 import { randomUUID } from "crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import {
-  categories,
-  creditCards,
-  creditCardCycles,
-  transactions,
-} from "@/lib/db/schema";
+import { categories, creditCards, transactions } from "@/lib/db/schema";
 import { creditCardPaySchema } from "@/lib/validations/credit-card";
 import { TRANSFER_CATEGORY_NAMES } from "@/lib/db/defaults";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
-import {
-  computeCycleAmountsPaid,
-  diffCycleAmounts,
-  loadAllocationState,
-} from "@/lib/credit-card-allocation";
+import { lockCard, reallocateCardCycles } from "@/lib/credit-card-allocation";
 import type { TransactionDTO } from "@/types";
 
 function toTransactionDTO(t: typeof transactions.$inferSelect): TransactionDTO {
@@ -77,6 +67,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .where(
       and(
         eq(categories.userId, auth.userId),
+        eq(categories.type, "transfer"),
         eq(categories.name, TRANSFER_CATEGORY_NAMES.creditCardPayment),
       ),
     )
@@ -87,16 +78,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       "Missing 'Credit Card Payment' category. Run scripts/backfill-transfer-categories.ts.",
     );
   }
-
-  // Load current allocation state and synthesize the new payment on top.
-  // Re-derive amountPaid per cycle from the FULL payment list so we stay
-  // self-healing: if a prior write somehow diverged, this sweep corrects it.
-  const { cycles, payments } = await loadAllocationState(db, auth.userId, card.id);
-  const { perCycle } = computeCycleAmountsPaid(cycles, [
-    ...payments,
-    { date: p.date, amount: p.amount },
-  ]);
-  const diffs = diffCycleAmounts(cycles, perCycle);
 
   const id = randomUUID();
   const insertValues = {
@@ -118,31 +99,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const maybeBatch = db as { batch?: unknown };
     if (typeof maybeBatch.batch === "function") {
       const neonDb = db as NeonHttpDatabase<typeof schema>;
-      const queries = [
+      const [, inserted] = await neonDb.batch([
+        lockCard(neonDb, card.id),
         neonDb.insert(transactions).values(insertValues).returning(),
-        ...diffs.map((d) =>
-          neonDb
-            .update(creditCardCycles)
-            .set({ amountPaid: d.newAmountStr, updatedAt: sql`now()` })
-            .where(eq(creditCardCycles.id, d.cycleId)),
-        ),
-      ];
-      const results = await neonDb.batch(
-        queries as [(typeof queries)[number], ...typeof queries],
-      );
-      row = (results[0] as (typeof transactions.$inferSelect)[])[0];
+        reallocateCardCycles(neonDb, auth.userId, card.id),
+      ]);
+      row = inserted[0];
     } else {
       row = await db.transaction(async (trx) => {
-        const [inserted] = await trx
-          .insert(transactions)
-          .values(insertValues)
-          .returning();
-        for (const d of diffs) {
-          await trx
-            .update(creditCardCycles)
-            .set({ amountPaid: d.newAmountStr, updatedAt: sql`now()` })
-            .where(eq(creditCardCycles.id, d.cycleId));
-        }
+        await lockCard(trx, card.id);
+        const [inserted] = await trx.insert(transactions).values(insertValues).returning();
+        await reallocateCardCycles(trx, auth.userId, card.id);
         return inserted;
       });
     }
@@ -152,7 +119,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       userId: auth.userId,
       cardId: card.id,
       payload: { amount: p.amount, date: p.date },
-      cycleUpdates: diffs.length,
       error:
         err instanceof Error
           ? { name: err.name, message: err.message, stack: err.stack }

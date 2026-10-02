@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
 import { transactionBulkDeleteSchema } from "@/lib/validations/transaction";
 import { ok, zodFail, requireUser } from "@/lib/api";
+import { recomputeCardCycleAllocations } from "@/lib/credit-card-allocation";
 import type { BulkDeletedDTO } from "@/types";
 
 export async function DELETE(req: Request) {
@@ -17,6 +18,12 @@ export async function DELETE(req: Request) {
     .delete(transactions)
     .where(and(eq(transactions.userId, auth.userId), inArray(transactions.id, parsed.data.ids)))
     .returning();
+
+  // Deleted card payments change what each statement cycle has been paid.
+  const cardIds = new Set(
+    deleted.filter((t) => t.type === "transfer" && t.creditCardId).map((t) => t.creditCardId!),
+  );
+  for (const cardId of cardIds) await recomputeCardCycleAllocations(db, auth.userId, cardId);
 
   return ok({ deleted: deleted.length } satisfies BulkDeletedDTO);
 }

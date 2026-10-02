@@ -5,7 +5,9 @@ import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 import { creditCards, creditCardCycles, transactions } from "@/lib/db/schema";
 import { creditCardUpdateSchema } from "@/lib/validations/credit-card";
-import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import { ok, fail, zodFail, requireUser, isUniqueViolation } from "@/lib/api";
+import { nextProjectedCycleDates } from "@/lib/credit-cards";
+import { reallocateCardCycles } from "@/lib/credit-card-allocation";
 import type {
   CreditCardDTO,
   CreditCardDetailDTO,
@@ -213,12 +215,30 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const cycleId = updateCycleInPlace ? latestCycle.id : randomUUID();
   const cycleCloseDate = p.lastStatementCloseDate!;
   const paymentDueDate = p.paymentDueDate!;
-  const statementBalanceVal = hasBalance ? String(p.statementBalance) : null;
-  const minimumPaymentVal = hasMinPayment ? String(p.minimumPayment) : null;
   const isProjected = !(hasBalance && hasMinPayment);
+  const cycleFields = {
+    cycleCloseDate,
+    paymentDueDate,
+    statementBalance: hasBalance ? String(p.statementBalance) : null,
+    minimumPayment: hasMinPayment ? String(p.minimumPayment) : null,
+    isProjected,
+  };
+  // Writing a real statement means the cycle accruing after it must exist
+  // too — a card always has exactly one projected cycle.
+  const nextCycleValues = isProjected
+    ? null
+    : {
+        id: randomUUID(),
+        cardId: existing.id,
+        userId: auth.userId,
+        ...nextProjectedCycleDates(cycleCloseDate, paymentDueDate),
+        isProjected: true,
+      };
 
   try {
-    // Atomic pair: card UPDATE + cycle UPDATE/INSERT. Dispatch per CLAUDE.md.
+    // Atomic: card UPDATE (which also row-locks the card), cycle
+    // UPDATE/INSERT, the next projected cycle when needed, then payment
+    // re-allocation across the new dates. Dispatch per CLAUDE.md.
     let row: typeof creditCards.$inferSelect;
     const maybeBatch = db as { batch?: unknown };
     if (typeof maybeBatch.batch === "function") {
@@ -231,32 +251,24 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const cycleWrite = updateCycleInPlace
         ? neonDb
             .update(creditCardCycles)
-            .set({
-              cycleCloseDate,
-              paymentDueDate,
-              statementBalance: statementBalanceVal,
-              minimumPayment: minimumPaymentVal,
-              isProjected,
-              // credit_card_cycles didn't exist when the 0004 updated_at
-              // trigger was created, so set explicitly here. Consolidate in
-              // Phase 5.
-              updatedAt: sql`now()`,
-            })
+            // credit_card_cycles isn't covered by the 0004 updated_at trigger.
+            .set({ ...cycleFields, updatedAt: sql`now()` })
             .where(eq(creditCardCycles.id, latestCycle!.id))
-        : neonDb.insert(creditCardCycles).values({
-            id: cycleId,
-            cardId: existing.id,
-            userId: auth.userId,
-            cycleCloseDate,
-            paymentDueDate,
-            statementBalance: statementBalanceVal,
-            minimumPayment: minimumPaymentVal,
-            isProjected,
-          });
-      const [cardRows] = await neonDb.batch([cardUpdate, cycleWrite]);
+        : neonDb
+            .insert(creditCardCycles)
+            .values({ id: cycleId, cardId: existing.id, userId: auth.userId, ...cycleFields });
+      const realloc = reallocateCardCycles(neonDb, auth.userId, existing.id);
+      const [cardRows] = nextCycleValues
+        ? await neonDb.batch([
+            cardUpdate,
+            cycleWrite,
+            neonDb.insert(creditCardCycles).values(nextCycleValues),
+            realloc,
+          ])
+        : await neonDb.batch([cardUpdate, cycleWrite, realloc]);
       row = cardRows[0];
     } else {
-      const result = await db.transaction(async (trx) => {
+      row = await db.transaction(async (trx) => {
         const [cardRow] = await trx
           .update(creditCards)
           .set(patch)
@@ -265,33 +277,23 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         if (updateCycleInPlace) {
           await trx
             .update(creditCardCycles)
-            .set({
-              cycleCloseDate,
-              paymentDueDate,
-              statementBalance: statementBalanceVal,
-              minimumPayment: minimumPaymentVal,
-              isProjected,
-              updatedAt: sql`now()`,
-            })
+            .set({ ...cycleFields, updatedAt: sql`now()` })
             .where(eq(creditCardCycles.id, latestCycle!.id));
         } else {
-          await trx.insert(creditCardCycles).values({
-            id: cycleId,
-            cardId: existing.id,
-            userId: auth.userId,
-            cycleCloseDate,
-            paymentDueDate,
-            statementBalance: statementBalanceVal,
-            minimumPayment: minimumPaymentVal,
-            isProjected,
-          });
+          await trx
+            .insert(creditCardCycles)
+            .values({ id: cycleId, cardId: existing.id, userId: auth.userId, ...cycleFields });
         }
+        if (nextCycleValues) await trx.insert(creditCardCycles).values(nextCycleValues);
+        await reallocateCardCycles(trx, auth.userId, existing.id);
         return cardRow;
       });
-      row = result;
     }
     return ok(toCreditCardDTO(row) satisfies CreditCardDTO);
   } catch (err) {
+    if (isUniqueViolation(err)) {
+      return fail(409, "A statement cycle with these dates already exists for this card.");
+    }
     console.error("[PATCH /api/credit-cards/:id] update failed", {
       userId: auth.userId,
       cardId: existing.id,
