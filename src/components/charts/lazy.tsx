@@ -24,3 +24,7 @@ export const PaymentDonut = dynamic(() => import("./payment-donut").then((m) => 
   ssr: false,
   loading,
 });
+export const BudgetChart = dynamic(() => import("./budget-chart").then((m) => m.BudgetChart), {
+  ssr: false,
+  loading,
+});

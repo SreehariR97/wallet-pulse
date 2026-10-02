@@ -17,12 +17,12 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartCard } from "@/components/charts/chart-container";
+import { BudgetChart } from "@/components/charts/lazy";
 import { useCategories } from "@/stores/categories";
 import { cn, currencySymbol, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
 import useSWR from "swr";
 import { ErrorState } from "@/components/shared/error-state";
 import { apiFetch, errorMessage, jsonBody, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
-import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 interface BudgetRow {
   id: string;
@@ -44,13 +44,6 @@ function barColor(pct: number) {
   if (pct >= 80) return "bg-warning";
   if (pct >= 50) return "bg-accent";
   return "bg-success";
-}
-
-function colorHex(pct: number) {
-  if (pct >= 100) return "hsl(0 55% 55%)";
-  if (pct >= 80) return "hsl(35 65% 52%)";
-  if (pct >= 50) return "hsl(258 80% 72%)";
-  return "hsl(150 35% 48%)";
 }
 
 export function BudgetsView({ currency }: { currency: string }) {
@@ -231,53 +224,10 @@ export function BudgetsView({ currency }: { currency: string }) {
           </div>
 
           <ChartCard title="Budget vs actual" description="Where you stand this period">
-            <ResponsiveContainer width="100%" height={Math.max(260, rows.length * 44)}>
-              <BarChart
-                data={rows.map((r) => ({
-                  name: r.categoryName ?? "Overall",
-                  budget: r.amount,
-                  spent: r.spent,
-                  pct: r.amount > 0 ? (r.spent / r.amount) * 100 : 0,
-                }))}
-                layout="vertical"
-                margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                <XAxis
-                  type="number"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => formatCurrency(v, currency)}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  tick={{ fill: "hsl(var(--foreground))", fontSize: 12 }}
-                  width={120}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "0.75rem",
-                    fontSize: 12,
-                  }}
-                  formatter={(v: number, n: string) => [formatCurrency(v, currency), n === "budget" ? "Budget" : "Spent"]}
-                  cursor={{ fill: "hsl(var(--muted))", opacity: 0.6 }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                <Bar dataKey="budget" fill="hsl(27 11% 78%)" radius={[0, 6, 6, 0]} />
-                <Bar dataKey="spent" fill="hsl(258 80% 72%)" radius={[0, 6, 6, 0]}>
-                  {rows.map((r, i) => {
-                    const pct = r.amount > 0 ? (r.spent / r.amount) * 100 : 0;
-                    return <Cell key={i} fill={colorHex(pct)} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <BudgetChart
+              rows={rows.map((r) => ({ name: r.categoryName ?? "Overall", amount: r.amount, spent: r.spent }))}
+              currency={currency}
+            />
           </ChartCard>
         </>
       )}
