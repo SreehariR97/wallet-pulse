@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiFetch, errorMessage, jsonBody, revalidateAll } from "@/lib/api-client";
 
 interface TargetField {
   key: string;
@@ -94,18 +95,20 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           }
           return out;
         });
-        const apiRes = await fetch("/api/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows, dateOrder }),
-        });
-        setPending(false);
-        if (!apiRes.ok) {
-          const j = await apiRes.json().catch(() => ({}));
-          return toast.error(j.error ?? "Import failed");
+        let data: { imported: number; skipped: number };
+        try {
+          ({ data } = await apiFetch<{ imported: number; skipped: number }>(
+            "/api/import",
+            jsonBody("POST", { rows, dateOrder }),
+          ));
+        } catch (err) {
+          toast.error(errorMessage(err, "Import failed"));
+          return;
+        } finally {
+          setPending(false);
         }
-        const { data } = await apiRes.json();
         toast.success(`Imported ${data.imported} transactions${data.skipped ? ` (${data.skipped} skipped)` : ""}`);
+        void revalidateAll();
         onOpenChange(false);
       },
     });

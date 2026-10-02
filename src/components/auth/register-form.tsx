@@ -23,15 +23,21 @@ export function RegisterForm() {
       email: String(form.get("email") ?? "").trim(),
       password: String(form.get("password") ?? ""),
     };
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      if (json.details) setErrors(json.details);
-      else toast.error(json.error ?? "Registration failed");
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (json.details) setErrors(json.details);
+        else toast.error(json.error ?? "Registration failed");
+        setPending(false);
+        return;
+      }
+    } catch {
+      toast.error("Couldn't reach the server. Check your connection and try again.");
       setPending(false);
       return;
     }

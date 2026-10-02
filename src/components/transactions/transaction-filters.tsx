@@ -11,6 +11,8 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useCategories } from "@/stores/categories";
 import type { TxType, PaymentMethod } from "@/types";
+import useSWR from "swr";
+import type { ApiEnvelope } from "@/lib/api-client";
 
 export interface TxFilterValues {
   type?: TxType;
@@ -69,19 +71,13 @@ export function TransactionFilters({
 }) {
   const { items: categories, fetch: fetchCats, loaded } = useCategories();
   const [open, setOpen] = React.useState(false);
-  const [cards, setCards] = React.useState<CardOption[]>([]);
+  // Active cards only — archived cards don't appear in picker (stage 3 rule).
+  const cardsReq = useSWR<ApiEnvelope<CardOption[]>>("/api/credit-cards");
+  const cards = cardsReq.data?.data ?? [];
 
   React.useEffect(() => {
     if (!loaded) fetchCats();
   }, [loaded, fetchCats]);
-
-  React.useEffect(() => {
-    // Active cards only — archived cards don't appear in picker (stage 3 rule).
-    fetch("/api/credit-cards")
-      .then((r) => r.json())
-      .then((j) => setCards((j.data ?? []) as CardOption[]))
-      .catch(() => {});
-  }, []);
 
   const activeCount = [
     values.type,
@@ -128,7 +124,7 @@ export function TransactionFilters({
           else if (v !== "custom") onChange({ ...values, ...presetRange(v) });
         }}
       >
-        <SelectTrigger className="w-[150px]">
+        <SelectTrigger className="w-[150px]" aria-label="Date range">
           <SelectValue placeholder="Date range" />
         </SelectTrigger>
         <SelectContent>
@@ -144,7 +140,7 @@ export function TransactionFilters({
       </Select>
 
       <Select value={typeSelectValue} onValueChange={handleTypeChange}>
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="w-[180px]" aria-label="Transaction type">
           <SelectValue placeholder="Type" />
         </SelectTrigger>
         <SelectContent>
@@ -172,9 +168,9 @@ export function TransactionFilters({
         <PopoverContent className="w-80" align="end">
           <div className="space-y-4">
             <div>
-              <Label className="mb-2 block text-xs">Category</Label>
+              <Label htmlFor="filter-category" className="mb-2 block text-xs">Category</Label>
               <Select value={values.categoryId ?? ALL} onValueChange={(v) => onChange({ ...values, categoryId: toFilterParam(v) })}>
-                <SelectTrigger>
+                <SelectTrigger id="filter-category">
                   <SelectValue placeholder="All categories" />
                 </SelectTrigger>
                 <SelectContent>
@@ -188,9 +184,9 @@ export function TransactionFilters({
               </Select>
             </div>
             <div>
-              <Label className="mb-2 block text-xs">Payment method</Label>
+              <Label htmlFor="filter-payment-method" className="mb-2 block text-xs">Payment method</Label>
               <Select value={values.paymentMethod ?? ALL} onValueChange={(v) => onChange({ ...values, paymentMethod: toFilterParam(v) as PaymentMethod | undefined })}>
-                <SelectTrigger>
+                <SelectTrigger id="filter-payment-method">
                   <SelectValue placeholder="Any method" />
                 </SelectTrigger>
                 <SelectContent>
@@ -206,14 +202,14 @@ export function TransactionFilters({
             </div>
             {cards.length > 0 && (
               <div>
-                <Label className="mb-2 block text-xs">Card</Label>
+                <Label htmlFor="filter-card" className="mb-2 block text-xs">Card</Label>
                 <Select
                   value={values.creditCardId ?? ALL}
                   onValueChange={(v) =>
                     onChange({ ...values, creditCardId: toFilterParam(v) })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="filter-card">
                     <SelectValue placeholder="Any card" />
                   </SelectTrigger>
                   <SelectContent>
@@ -232,27 +228,27 @@ export function TransactionFilters({
             <Separator />
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="mb-2 block text-xs">From</Label>
-                <Input type="date" value={values.from ?? ""} onChange={(e) => onChange({ ...values, from: e.target.value || undefined })} />
+                <Label htmlFor="filter-from" className="mb-2 block text-xs">From</Label>
+                <Input id="filter-from" type="date" value={values.from ?? ""} onChange={(e) => onChange({ ...values, from: e.target.value || undefined })} />
               </div>
               <div>
-                <Label className="mb-2 block text-xs">To</Label>
-                <Input type="date" value={values.to ?? ""} onChange={(e) => onChange({ ...values, to: e.target.value || undefined })} />
+                <Label htmlFor="filter-to" className="mb-2 block text-xs">To</Label>
+                <Input id="filter-to" type="date" value={values.to ?? ""} onChange={(e) => onChange({ ...values, to: e.target.value || undefined })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="mb-2 block text-xs">Min amount</Label>
-                <Input type="number" step="0.01" min="0" max="99999999999.99" value={values.minAmount ?? ""} onChange={(e) => onChange({ ...values, minAmount: e.target.value || undefined })} placeholder="0" />
+                <Label htmlFor="filter-min" className="mb-2 block text-xs">Min amount</Label>
+                <Input id="filter-min" type="number" step="0.01" min="0" max="99999999999.99" value={values.minAmount ?? ""} onChange={(e) => onChange({ ...values, minAmount: e.target.value || undefined })} placeholder="0" />
               </div>
               <div>
-                <Label className="mb-2 block text-xs">Max amount</Label>
-                <Input type="number" step="0.01" min="0" max="99999999999.99" value={values.maxAmount ?? ""} onChange={(e) => onChange({ ...values, maxAmount: e.target.value || undefined })} placeholder="999" />
+                <Label htmlFor="filter-max" className="mb-2 block text-xs">Max amount</Label>
+                <Input id="filter-max" type="number" step="0.01" min="0" max="99999999999.99" value={values.maxAmount ?? ""} onChange={(e) => onChange({ ...values, maxAmount: e.target.value || undefined })} placeholder="999" />
               </div>
             </div>
             <div>
-              <Label className="mb-2 block text-xs">Tags</Label>
-              <Input value={values.tags ?? ""} onChange={(e) => onChange({ ...values, tags: e.target.value || undefined })} placeholder="work, vacation" />
+              <Label htmlFor="filter-tags" className="mb-2 block text-xs">Tags</Label>
+              <Input id="filter-tags" value={values.tags ?? ""} onChange={(e) => onChange({ ...values, tags: e.target.value || undefined })} placeholder="work, vacation" />
             </div>
             <div className="flex justify-between pt-2">
               <Button

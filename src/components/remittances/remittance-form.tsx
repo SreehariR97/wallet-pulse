@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CURRENCIES, formatFxRate } from "@/lib/utils";
+import { apiFetch, errorMessage } from "@/lib/api-client";
 
 export interface RemittanceFormInitial {
   id: string;
@@ -109,15 +110,16 @@ export function RemittanceForm({
       recurringFrequency: isRecurring ? recurringFrequency : null,
       paymentMethod: initial?.paymentMethod ?? "bank_transfer",
     };
-    const res = await fetch(initial ? `/api/remittances/${initial.id}` : "/api/remittances", {
-      method: initial ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setPending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to save remittance");
+    try {
+      await apiFetch(initial ? `/api/remittances/${initial.id}` : "/api/remittances", {
+        method: initial ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to save remittance"));
+      return;
+    } finally {
+      setPending(false);
     }
     toast.success(initial ? "Remittance updated" : "Remittance recorded");
     onOpenChange(false);

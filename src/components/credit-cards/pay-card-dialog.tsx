@@ -23,6 +23,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/utils";
+import { apiFetch, errorMessage } from "@/lib/api-client";
+import useSWR from "swr";
+import type { ApiEnvelope } from "@/lib/api-client";
 
 interface CardOption {
   id: string;
@@ -31,6 +34,8 @@ interface CardOption {
   last4: string | null;
   balance: number;
 }
+
+const NO_CARDS: CardOption[] = [];
 
 export function PayCardDialog({
   open,
@@ -45,32 +50,33 @@ export function PayCardDialog({
   presetCardId?: string;
   onSaved?: () => void;
 }) {
-  const [cards, setCards] = React.useState<CardOption[]>([]);
-  const [cardsLoading, setCardsLoading] = React.useState(false);
   const [cardId, setCardId] = React.useState<string>("");
   const [amount, setAmount] = React.useState("");
   const [date, setDate] = React.useState(format(new Date(), "yyyy-MM-dd"));
   const [notes, setNotes] = React.useState("");
   const [pending, setPending] = React.useState(false);
 
+  // Active cards only — archived cards don't receive new payments through
+  // this shortcut (you can still edit older transactions tagged to them).
+  const cardsReq = useSWR<ApiEnvelope<CardOption[]>>(open ? "/api/credit-cards" : null);
+  const cards = cardsReq.data?.data ?? NO_CARDS;
+  const cardsLoading = cardsReq.isLoading;
+
+  // Reset on open, then (below, same commit) pick the preset or first card.
+  // Order matters: the pick's functional update runs after this reset.
   React.useEffect(() => {
     if (!open) return;
-    setCardsLoading(true);
-    // Active cards only — archived cards don't receive new payments through
-    // this shortcut (you can still edit older transactions tagged to them).
-    fetch("/api/credit-cards")
-      .then((r) => r.json())
-      .then((j) => {
-        const list: CardOption[] = j.data ?? [];
-        setCards(list);
-        setCardId(presetCardId ?? list[0]?.id ?? "");
-        setCardsLoading(false);
-      })
-      .catch(() => setCardsLoading(false));
+    setCardId(presetCardId ?? "");
     setAmount("");
     setDate(format(new Date(), "yyyy-MM-dd"));
     setNotes("");
   }, [open, presetCardId]);
+
+  // Pick the preset (or first) card once the list is available.
+  React.useEffect(() => {
+    if (!open) return;
+    setCardId((current) => current || presetCardId || cards[0]?.id || "");
+  }, [open, presetCardId, cards]);
 
   const selected = cards.find((c) => c.id === cardId);
 
@@ -78,19 +84,20 @@ export function PayCardDialog({
     e.preventDefault();
     if (!cardId) return;
     setPending(true);
-    const res = await fetch(`/api/credit-cards/${cardId}/pay`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: Number(amount),
-        date,
-        notes: notes.trim() || null,
-      }),
-    });
-    setPending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to record payment");
+    try {
+      await apiFetch(`/api/credit-cards/${cardId}/pay`, {
+        method: "POST",
+        body: JSON.stringify({
+          amount: Number(amount),
+          date,
+          notes: notes.trim() || null,
+        }),
+      });
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to record payment"));
+      return;
+    } finally {
+      setPending(false);
     }
     toast.success("Payment recorded");
     onOpenChange(false);

@@ -18,7 +18,10 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartCard } from "@/components/charts/chart-container";
 import { useCategories } from "@/stores/categories";
-import { cn, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
+import { cn, currencySymbol, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
+import useSWR from "swr";
+import { ErrorState } from "@/components/shared/error-state";
+import { apiFetch, errorMessage, jsonBody, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 interface BudgetRow {
@@ -52,30 +55,25 @@ function colorHex(pct: number) {
 
 export function BudgetsView({ currency }: { currency: string }) {
   const { items: categories, fetch: fetchCats, loaded } = useCategories();
-  const [rows, setRows] = React.useState<BudgetRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const budgets = useSWR<ApiEnvelope<BudgetRow[]>>("/api/budgets");
+  const rows = budgets.data?.data ?? [];
+  const loading = budgets.isLoading;
   const [editing, setEditing] = React.useState<BudgetRow | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<BudgetRow | null>(null);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    const res = await fetch("/api/budgets");
-    const json = await res.json();
-    setRows(json.data ?? []);
-    setLoading(false);
-  }, []);
-
   React.useEffect(() => {
-    load();
     if (!loaded) fetchCats();
-  }, [load, loaded, fetchCats]);
+  }, [loaded, fetchCats]);
 
   async function onDelete(b: BudgetRow) {
-    const res = await fetch(`/api/budgets/${b.id}`, { method: "DELETE" });
-    if (!res.ok) return toast.error("Failed to delete budget");
-    toast.success("Budget deleted");
-    load();
+    try {
+      await apiFetch(`/api/budgets/${b.id}`, { method: "DELETE" });
+      toast.success("Budget deleted");
+      await revalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to delete budget"));
+    }
   }
 
   const overBudget = rows.filter((r) => r.amount > 0 && r.spent > r.amount);
@@ -109,7 +107,9 @@ export function BudgetsView({ currency }: { currency: string }) {
         </div>
       )}
 
-      {loading ? (
+      {budgets.error && !budgets.data ? (
+        <ErrorState title="Couldn't load budgets" onRetry={() => void budgets.mutate()} />
+      ) : loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-40 w-full" />
@@ -167,7 +167,7 @@ export function BudgetsView({ currency }: { currency: string }) {
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="ghost">
+                          <Button size="icon" variant="ghost" aria-label={`Actions for ${b.categoryName ?? "overall"} budget`}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -287,7 +287,8 @@ export function BudgetsView({ currency }: { currency: string }) {
         onOpenChange={setDialogOpen}
         initial={editing}
         categories={categories}
-        onSaved={load}
+        currency={currency}
+        onSaved={() => void revalidateAll()}
       />
 
       <ConfirmDialog
@@ -310,12 +311,14 @@ function BudgetDialog({
   onOpenChange,
   initial,
   categories,
+  currency,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   initial: BudgetRow | null;
   categories: Array<{ id: string; name: string; icon: string; type: "expense" | "income" | "loan" | "transfer" }>;
+  currency: string;
   onSaved: () => void;
 }) {
   const [categoryId, setCategoryId] = React.useState<string>(OVERALL_VALUE);
@@ -342,19 +345,16 @@ function BudgetDialog({
       period,
       startDate,
     };
-    const res = await fetch(initial ? `/api/budgets/${initial.id}` : "/api/budgets", {
-      method: initial ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setPending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to save budget");
+    try {
+      await apiFetch(initial ? `/api/budgets/${initial.id}` : "/api/budgets", jsonBody(initial ? "PUT" : "POST", payload));
+      toast.success(initial ? "Budget updated" : "Budget created");
+      onOpenChange(false);
+      onSaved();
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to save budget"));
+    } finally {
+      setPending(false);
     }
-    toast.success(initial ? "Budget updated" : "Budget created");
-    onOpenChange(false);
-    onSaved();
   }
 
   const expenseCategories = categories.filter((c) => c.type === "expense");
@@ -367,9 +367,9 @@ function BudgetDialog({
         </DialogHeader>
         <form onSubmit={save} className="space-y-4">
           <div className="grid gap-1.5">
-            <Label>Scope</Label>
+            <Label htmlFor="budget-scope">Scope</Label>
             <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger>
+              <SelectTrigger id="budget-scope">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -387,12 +387,16 @@ function BudgetDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>Amount</Label>
+              <Label htmlFor="budget-amount">Amount</Label>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                  $
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                >
+                  {currencySymbol(currency)}
                 </span>
                 <Input
+                  id="budget-amount"
                   type="number"
                   step="0.01"
                   min="0"
@@ -401,14 +405,14 @@ function BudgetDialog({
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="500"
-                  className="pl-7"
+                  className={currencySymbol(currency).length > 1 ? "pl-12" : "pl-7"}
                 />
               </div>
             </div>
             <div className="grid gap-1.5">
-              <Label>Period</Label>
+              <Label htmlFor="budget-period">Period</Label>
               <Select value={period} onValueChange={(v) => setPeriod(v as typeof period)}>
-                <SelectTrigger>
+                <SelectTrigger id="budget-period">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -420,8 +424,8 @@ function BudgetDialog({
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label>Start date</Label>
-            <Input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <Label htmlFor="budget-start">Start date</Label>
+            <Input id="budget-start" type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
