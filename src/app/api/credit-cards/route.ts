@@ -296,7 +296,8 @@ export async function POST(req: Request) {
           ? { name: err.name, message: err.message, stack: err.stack }
           : err,
     });
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return fail(500, `Credit card insert failed: ${message}`);
+    // Details are in the server log above; driver/constraint text stays
+    // out of the response.
+    return fail(500, "Credit card insert failed. Please try again.");
   }
 }

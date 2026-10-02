@@ -33,7 +33,8 @@ function getClient(): DB {
   }
   if (!/^postgres(?:ql)?:\/\//.test(connectionString)) {
     throw new Error(
-      `DATABASE_URL must be a Postgres connection string (got "${connectionString.slice(0, 20)}...").\n` +
+      // Don't echo the value: a malformed URL can still contain credentials.
+      "DATABASE_URL must start with postgres:// or postgresql://.\n" +
         "Expected format: postgres://user:pass@host:port/dbname"
     );
   }
