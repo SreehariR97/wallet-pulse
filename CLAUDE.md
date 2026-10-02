@@ -12,6 +12,7 @@ Privacy-first personal expense tracker. Production-grade Mint/YNAB-style app. De
   - Local dev Postgres: `docker-compose.yml` ships a Postgres 16 container. Bring it up with `docker compose up -d postgres`.
 - **Node 22.x** pinned in `engines` — Vercel uses this exact runtime, which has prebuilt binaries for every native dep we might optionally install.
 - **NextAuth v5** (credentials provider, JWT strategy, split edge-safe config)
+- **SWR** for client data fetching (`SWRProvider` in the protected layout) — see "Client data fetching" below
 - **Zustand** for client state (categories store)
 - **Recharts** for charts · **date-fns** · **Zod** · **sonner** · **papaparse**
 - Package manager: **pnpm@9.12.0** (pinned via `packageManager` field)
@@ -150,10 +151,20 @@ Constraints worth knowing (migration 0009): one budget per `(user, category, per
 - Response envelope: `{ data, meta? }` or `{ error, details? }`
 - See `src/lib/api.ts`
 
+## Client data fetching
+
+- Read API data with `useSWR<ApiEnvelope<T>>(url)`; the provider's fetcher is `apiFetch`. Don't `fetch` in a `useEffect`: SWR only renders the response for the current key (no out-of-order races), dedupes identical requests across components, and exposes `error`.
+- Write with `apiFetch(url, jsonBody(method, payload))` inside `try { } catch { toast.error(errorMessage(err, "…")) } finally { setPending(false) }`. It throws `ApiError` (with the server's `details`) on any non-2xx, and a 401 sends the user to `/login?callbackUrl=…`.
+- After any write call `revalidateAll()` — one transaction changes the dashboard, budgets, analytics and card balances at once. `router.refresh()` alone never reaches client-fetched views.
+- Show `ErrorState` (with a retry) when a request failed; `EmptyState` only for a successful empty result.
+- Charts load through `src/components/charts/lazy.tsx` (Recharts stays out of first-load JS); import chart types from the chart modules directly.
+- Route boundaries: `src/app/(protected)/{loading,error,not-found}.tsx`, plus `src/app/{not-found,global-error}.tsx`.
+
 ## Code conventions
 
 - Server Components by default; `"use client"` only where needed
-- No `any`. Types flow from Drizzle → DTOs in `src/types/index.ts` → components
+- No `any` (enforced by ESLint `@typescript-eslint/no-explicit-any`). Types flow from Drizzle → DTOs in `src/types/index.ts` → components
+- Every form control has a `<Label htmlFor>`/`id` pair (or `aria-label`); toggle-button groups use `role="radiogroup"` + `role="radio"`/`aria-checked`; icon-only buttons need `aria-label`
 - `cn()` for className merging, `formatCurrency(amount, currency, signed?)` for money
 - Empty states via `EmptyState`; skeletons via `Skeleton`; toasts via `sonner`
 - ConfirmDialog `onConfirm` signature is `() => void | Promise<void>` — wrap logic in async callback, don't use `&&`

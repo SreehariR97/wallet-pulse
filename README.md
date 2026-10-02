@@ -55,8 +55,9 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on mo
 | Database | **Postgres** via **Neon serverless driver** (`@neondatabase/serverless`) |
 | ORM & migrations | **Drizzle ORM** + **drizzle-kit** |
 | Authentication | **NextAuth v5** (Auth.js) — credentials provider, JWT strategy |
-| Forms & validation | **react-hook-form** + **Zod** |
-| Client state | **Zustand** |
+| Forms & validation | Controlled React forms + **Zod** (server-side, shared schemas) |
+| Data fetching | **SWR** over a shared `apiFetch` client (`src/lib/api-client.ts`) |
+| Client state | **Zustand** (categories store) |
 | Notifications | **sonner** |
 | CSV | **papaparse** |
 | Package manager | **pnpm** |
