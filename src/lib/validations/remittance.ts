@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoDate, moneyAmount } from "./common";
 
 export const remittanceServiceEnum = z.enum([
   "wise",
@@ -15,11 +16,8 @@ const currencyCode = z.string().regex(/^[A-Z]{3}$/i, "Currency must be a 3-lette
 
 export const remittanceCreateSchema = z.object({
   // Transaction-side fields (type is forced to "transfer" server-side).
-  amount: z.coerce
-    .number()
-    .positive("Amount must be greater than 0")
-    .max(99999999999.99, "Amount exceeds maximum value"),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
+  amount: moneyAmount(),
+  date: isoDate("Invalid date"),
   description: z.string().min(1, "Description is required").max(200),
   notes: z.string().max(2000).optional().nullable(),
   paymentMethod: z
@@ -51,15 +49,15 @@ export const remittanceQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(10000).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(25),
   service: remittanceServiceEnum.optional(),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  from: isoDate().optional(),
+  to: isoDate().optional(),
   sort: z.enum(["date", "amount", "fxRate"]).default("date"),
   order: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export const remittanceStatsQuerySchema = z.object({
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  from: isoDate().optional(),
+  to: isoDate().optional(),
 });
 
 export type RemittanceCreateInput = z.infer<typeof remittanceCreateSchema>;

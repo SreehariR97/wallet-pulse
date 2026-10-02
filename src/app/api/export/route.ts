@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoDate } from "@/lib/validations/common";
 import { and, eq, gte, lte, asc } from "drizzle-orm";
 import Papa from "papaparse";
 import { format } from "date-fns";
@@ -16,8 +17,8 @@ const querySchema = z.object({
   // .toLowerCase() in the pre-Zod code accepted arbitrary strings and fell
   // through to the final `fmt !== "csv"` check. Tighten to an explicit enum.
   format: z.enum(["csv", "json"]).default("csv"),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  from: isoDate().optional(),
+  to: isoDate().optional(),
 });
 
 export async function GET(req: Request) {

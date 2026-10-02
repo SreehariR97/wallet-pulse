@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoDate } from "@/lib/validations/common";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { format, startOfMonth } from "date-fns";
 import { db } from "@/lib/db";
@@ -7,8 +8,8 @@ import { ok, zodFail, requireUser } from "@/lib/api";
 import type { AnalyticsSummaryDTO } from "@/types";
 
 const querySchema = z.object({
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  from: isoDate().optional(),
+  to: isoDate().optional(),
 });
 
 export async function GET(req: Request) {

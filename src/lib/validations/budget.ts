@@ -1,14 +1,12 @@
 import { z } from "zod";
+import { isoDate, moneyAmount } from "./common";
 
 export const budgetCreateSchema = z.object({
   categoryId: z.string().optional().nullable(),
-  amount: z.coerce
-    .number()
-    .positive("Amount must be greater than 0")
-    .max(99999999999.99, "Amount exceeds maximum value"),
+  amount: moneyAmount(),
   period: z.enum(["weekly", "monthly", "yearly"]).default("monthly"),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  startDate: isoDate(),
+  endDate: isoDate().optional().nullable(),
 });
 
 export const budgetUpdateSchema = budgetCreateSchema.partial();
