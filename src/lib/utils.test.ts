@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatCurrency, formatCurrencyAuto, formatCompactCurrency, safeCallbackPath } from "./utils";
+import { formatAmountFor, formatCurrency, formatCurrencyAuto, formatCompactCurrency, safeCallbackPath } from "./utils";
 
 describe("formatCurrency", () => {
   it("uses 2 decimals for USD/EUR/GBP/INR (Intl default)", () => {
@@ -14,9 +14,16 @@ describe("formatCurrency", () => {
     expect(formatCurrency(1234.7, "JPY")).toBe("¥1,235");
   });
 
-  it("groups INR with thousands separators in en-US locale", () => {
-    // en-US locale groups by 3s — Indian lakh grouping is intentionally not used.
-    expect(formatCurrency(100_000, "INR")).toBe("₹100,000.00");
+  it("groups INR the Indian way (lakh/crore)", () => {
+    expect(formatCurrency(100_000, "INR")).toBe("₹1,00,000.00");
+    expect(formatCompactCurrency(10_000_000, "INR")).toBe("₹1Cr");
+    expect(formatAmountFor(1_234_567.891, "INR")).toBe("12,34,567.89");
+  });
+
+  it("shows a plain $ for CAD and AUD, matching their symbol in CURRENCIES", () => {
+    expect(formatCurrency(1234.5, "CAD")).toBe("$1,234.50");
+    expect(formatCurrency(1234.5, "AUD")).toBe("$1,234.50");
+    expect(formatAmountFor(1234.5, "USD")).toBe("1,234.50");
   });
 
   it("honors signed for negative EUR", () => {

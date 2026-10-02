@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CURRENCIES, formatFxRate } from "@/lib/utils";
+import { CURRENCIES, formatAmountFor, formatFxRate } from "@/lib/utils";
 import { apiFetch, errorMessage } from "@/lib/api-client";
 
 export interface RemittanceFormInitial {
@@ -255,7 +255,7 @@ export function RemittanceForm({
               <span className="text-[13px] font-[460] text-muted-foreground tabular-nums">
                 ≈{" "}
                 <span className="font-[540] text-foreground">
-                  {delivered.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatAmountFor(delivered, toCurrency)}
                 </span>{" "}
                 {toCurrency}
                 {rateNum > 0 && (

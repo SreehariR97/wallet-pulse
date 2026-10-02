@@ -15,7 +15,7 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { cn, currencySymbol, dateFromSeconds, formatCivilDate, formatCurrency, formatFxRate } from "@/lib/utils";
+import { cn, currencySymbol, formatAmountFor, formatCivilDate, formatCurrency, formatFxRate } from "@/lib/utils";
 import { RemittanceForm, type RemittanceFormInitial } from "./remittance-form";
 import { RemittanceStats, type StatsData } from "./stats-cards";
 import { ServiceBadge } from "./service-badge";
@@ -272,10 +272,7 @@ function RemittanceList({
                       <span>{formatCurrency(sent, r.fromCurrency ?? currency)}</span>
                       <span className="text-[11px] font-[460] text-muted-foreground">
                         ≈ {currencySymbol(r.toCurrency)}
-                        {delivered.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}{" "}
+                        {formatAmountFor(delivered, r.toCurrency)}{" "}
                         {r.toCurrency}
                       </span>
                     </div>
