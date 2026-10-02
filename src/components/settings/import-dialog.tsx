@@ -46,6 +46,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [headers, setHeaders] = React.useState<string[]>([]);
   const [preview, setPreview] = React.useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = React.useState<Record<string, string>>({});
+  const [dateOrder, setDateOrder] = React.useState<"MDY" | "DMY">("MDY");
   const [pending, setPending] = React.useState(false);
 
   React.useEffect(() => {
@@ -54,6 +55,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       setHeaders([]);
       setPreview([]);
       setMapping({});
+      setDateOrder("MDY");
     }
   }, [open]);
 
@@ -95,7 +97,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         const apiRes = await fetch("/api/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows }),
+          body: JSON.stringify({ rows, dateOrder }),
         });
         setPending(false);
         if (!apiRes.ok) {
@@ -168,6 +170,22 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <Label htmlFor="import-date-order" className="text-sm">
+                Dates like 03/04/2026 mean
+              </Label>
+              <span />
+              <Select value={dateOrder} onValueChange={(v) => setDateOrder(v === "DMY" ? "DMY" : "MDY")}>
+                <SelectTrigger id="import-date-order">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MDY">March 4 (month first)</SelectItem>
+                  <SelectItem value="DMY">3 April (day first)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {!requiredMet && (
