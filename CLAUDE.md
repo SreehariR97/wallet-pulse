@@ -159,13 +159,15 @@ Constraints worth knowing (migration 0009): one budget per `(user, category, per
 - Show `ErrorState` (with a retry) when a request failed; `EmptyState` only for a successful empty result.
 - Charts load through `src/components/charts/lazy.tsx` (Recharts stays out of first-load JS); import chart types from the chart modules directly.
 - Route boundaries: `src/app/(protected)/{loading,error,not-found}.tsx`, plus `src/app/{not-found,global-error}.tsx`.
+- List/view state that a user would expect to survive refresh or a shared link (transactions filters/search/sort/page, dashboard month, analytics range) lives in the URL: read initial values with `useSearchParams()` through the parsers in `src/lib/url-state.ts` (they drop malformed values), write with `useSyncToUrl()` from `src/hooks/useUrlState.ts` (history.replaceState — no server round-trip). Keep `src/lib/url-state.ts` free of Zod: it ships to the browser.
 
 ## Code conventions
 
 - Server Components by default; `"use client"` only where needed
 - No `any` (enforced by ESLint `@typescript-eslint/no-explicit-any`). Types flow from Drizzle → DTOs in `src/types/index.ts` → components
 - Every form control has a `<Label htmlFor>`/`id` pair (or `aria-label`); toggle-button groups use `role="radiogroup"` + `role="radio"`/`aria-checked`; icon-only buttons need `aria-label`
-- `cn()` for className merging, `formatCurrency(amount, currency, signed?)` for money
+- `cn()` for className merging, `formatCurrency(amount, currency, signed?)` for money. Formatting locale follows the currency (`localeForCurrency`: INR → en-IN lakh/crore grouping, CAD/AUD → plain "$"); use `formatAmountFor(amount, currency)` for a symbol-less amount. Never `toLocaleString("en-US")`.
+- Colors: both themes pass axe WCAG 2 A/AA on every main page — check contrast before changing a token in `globals.css` (dark `--destructive` is a light red with dark `--destructive-foreground` on purpose).
 - Empty states via `EmptyState`; skeletons via `Skeleton`; toasts via `sonner`
 - ConfirmDialog `onConfirm` signature is `() => void | Promise<void>` — wrap logic in async callback, don't use `&&`
 - Don't shadow the global `fetch` when destructuring the Zustand categories store — alias as `fetchCategories`

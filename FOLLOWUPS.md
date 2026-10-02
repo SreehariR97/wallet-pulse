@@ -158,36 +158,6 @@ E2E pass.
 
 ---
 
-## Frontend hardening (Phase 4) — left for later
-
-### Keep list filters, page and month in the URL
-
-Transactions filters/sort/page, the dashboard month and the analytics range
-live in component state, so refresh, Back and shared links lose them.
-Move them to search params (`useSearchParams` + `router.replace`; the page
-needs a Suspense boundary). The SWR keys are already the query strings, so
-the data side won't change.
-
-### Lazy-load the budgets chart
-
-Dashboard, analytics and card detail load Recharts on demand
-(`src/components/charts/lazy.tsx`); `/budgets` still renders its
-budget-vs-spent `BarChart` inline in `budgets-view.tsx`, keeping it at
-~269 kB first-load JS. Extract it to `src/components/charts/` and add it to
-`lazy.tsx`.
-
-### Dark-theme contrast audit
-
-axe-core (WCAG 2 A/AA) reports zero violations on dashboard, transactions,
-new transaction, budgets, categories, settings, analytics and cards in the
-light theme after Phase 4. The dark theme wasn't scanned.
-
-### Locale-aware number formatting
-
-`formatCurrency` always formats with `en-US` grouping, so INR shows
-`₹100,000.00` rather than `₹1,00,000.00`. Pass the user's locale (or derive
-one from the currency) and cache `Intl.NumberFormat` instances.
-
 ## Post-redesign
 
 ### Align `warning` semantics across the app
