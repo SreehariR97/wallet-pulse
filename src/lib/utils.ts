@@ -54,6 +54,19 @@ export function formatCurrencyAuto(
   return amount > 0 ? `+${compact}` : `-${compact}`;
 }
 
+/**
+ * A post-login redirect target from the query string, or the dashboard.
+ * Only same-origin paths are allowed: "//evil.com" and absolute URLs would
+ * make the login page an open redirect.
+ */
+export function safeCallbackPath(raw: unknown): string {
+  if (typeof raw !== "string" || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
+    return "/dashboard";
+  }
+  if (raw === "/login" || raw.startsWith("/login?") || raw === "/register") return "/dashboard";
+  return raw;
+}
+
 export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }

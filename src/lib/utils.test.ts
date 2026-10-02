@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatCurrency, formatCurrencyAuto, formatCompactCurrency } from "./utils";
+import { formatCurrency, formatCurrencyAuto, formatCompactCurrency, safeCallbackPath } from "./utils";
 
 describe("formatCurrency", () => {
   it("uses 2 decimals for USD/EUR/GBP/INR (Intl default)", () => {
@@ -76,5 +76,18 @@ describe("formatCurrencyAuto", () => {
   it("supports non-USD currencies", () => {
     expect(formatCurrencyAuto(500, "EUR")).toBe(formatCurrency(500, "EUR"));
     expect(formatCurrencyAuto(10_000_000, "EUR")).toBe(formatCompactCurrency(10_000_000, "EUR"));
+  });
+});
+
+describe("safeCallbackPath", () => {
+  it("keeps same-origin paths with their query string", () => {
+    expect(safeCallbackPath("/budgets")).toBe("/budgets");
+    expect(safeCallbackPath("/transactions?page=2")).toBe("/transactions?page=2");
+  });
+
+  it("falls back to the dashboard for anything that could leave the site or loop", () => {
+    for (const bad of [undefined, "", "https://evil.example", "//evil.example", "/\\evil.example", "javascript:alert(1)", "/login", "/login?x=1", "/register", 42]) {
+      expect(safeCallbackPath(bad)).toBe("/dashboard");
+    }
   });
 });

@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { LoginForm } from "@/components/auth/login-form";
+import { safeCallbackPath } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function LoginPage() {
+export const metadata: Metadata = { title: "Sign in" };
+
+export default function LoginPage({ searchParams }: { searchParams: { callbackUrl?: string } }) {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
@@ -10,7 +14,7 @@ export default function LoginPage() {
         <CardDescription className="font-[460]">Sign in to your WalletPulse account</CardDescription>
       </CardHeader>
       <CardContent>
-        <LoginForm />
+        <LoginForm callbackPath={safeCallbackPath(searchParams.callbackUrl)} />
         <p className="mt-6 text-center text-sm font-[460] text-muted-foreground">
           Don&apos;t have an account?{" "}
           <Link href="/register" className="font-[540] text-link underline underline-offset-4 hover:opacity-80">

@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function LoginForm() {
+/** `callbackPath` is pre-validated by the page (see safeCallbackPath). */
+export function LoginForm({ callbackPath = "/dashboard" }: { callbackPath?: string }) {
   const router = useRouter();
   const [pending, setPending] = React.useState(false);
 
@@ -29,7 +30,7 @@ export function LoginForm() {
       return;
     }
     toast.success("Welcome back!");
-    router.push("/dashboard");
+    router.push(callbackPath);
     router.refresh();
   }
 

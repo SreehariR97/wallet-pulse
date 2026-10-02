@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
@@ -6,6 +7,8 @@ import { transactions } from "@/lib/db/schema";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { TransactionForm } from "@/components/transactions/transaction-form";
+
+export const metadata: Metadata = { title: "Edit transaction" };
 
 export default async function EditTransactionPage({ params }: { params: { id: string } }) {
   const session = await auth();
@@ -38,7 +41,7 @@ export default async function EditTransactionPage({ params }: { params: { id: st
               paymentMethod: row.paymentMethod,
               creditCardId: row.creditCardId ?? "",
               isRecurring: row.isRecurring,
-              recurringFrequency: (row.recurringFrequency ?? "") as any,
+              recurringFrequency: row.recurringFrequency ?? "",
               tags: row.tags ?? "",
             }}
           />
