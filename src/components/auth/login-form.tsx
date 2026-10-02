@@ -21,7 +21,11 @@ export function LoginForm() {
     const res = await signIn("credentials", { email, password, redirect: false });
     setPending(false);
     if (res?.error) {
-      toast.error("Invalid email or password");
+      toast.error(
+        res.code === "rate_limited"
+          ? "Too many sign-in attempts. Please wait a few minutes and try again."
+          : "Invalid email or password"
+      );
       return;
     }
     toast.success("Welcome back!");

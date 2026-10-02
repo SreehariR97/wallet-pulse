@@ -60,7 +60,7 @@ export function SettingsView({ initial }: { initial: Profile }) {
       const j = await res.json().catch(() => ({}));
       return toast.error(j.error ?? "Failed to update profile");
     }
-    toast.success("Profile updated. Sign in again to see currency change everywhere.");
+    toast.success("Profile updated");
     router.refresh();
   }
 
@@ -77,9 +77,9 @@ export function SettingsView({ initial }: { initial: Profile }) {
       const j = await res.json().catch(() => ({}));
       return toast.error(j.error ?? "Failed to change password");
     }
-    toast.success("Password changed");
-    setCurrentPassword("");
-    setNewPassword("");
+    // The server revoked every session on password change, this one included.
+    toast.success("Password changed. Please sign in with your new password.");
+    await signOut({ callbackUrl: "/login" });
   }
 
   async function deleteAccount() {
@@ -162,7 +162,7 @@ export function SettingsView({ initial }: { initial: Profile }) {
               </div>
               <div className="grid gap-1.5">
                 <Label>New password</Label>
-                <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={6} />
+                <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
               </div>
               <div className="flex justify-end">
                 <Button type="submit" disabled={savingPassword || !currentPassword || !newPassword}>

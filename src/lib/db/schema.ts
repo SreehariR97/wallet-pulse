@@ -5,6 +5,7 @@ import {
   boolean,
   date,
   doublePrecision,
+  integer,
   numeric,
   timestamp,
   index,
@@ -21,6 +22,10 @@ export const users = pgTable("users", {
   currency: text("currency").notNull().default("USD"),
   monthlyBudget: numeric("monthly_budget", { precision: 14, scale: 2 }),
   theme: text("theme").notNull().default("dark"),
+  // Copied into the JWT at sign-in and re-checked on every server-side
+  // auth() call (see src/lib/auth.ts). Bumping it revokes every session
+  // issued before the bump — password change does this.
+  sessionVersion: integer("session_version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
 });
@@ -245,3 +250,12 @@ export const creditCardCycles = pgTable(
 
 export type CreditCardCycle = typeof creditCardCycles.$inferSelect;
 export type NewCreditCardCycle = typeof creditCardCycles.$inferInsert;
+
+// Fixed-window counters for auth endpoints (login, register, password
+// change). Lives in Postgres so limits hold across serverless instances
+// without extra infrastructure. See src/lib/rate-limit.ts.
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull().default(now),
+});

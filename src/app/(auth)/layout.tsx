@@ -1,8 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Wallet } from "lucide-react";
+import { auth } from "@/lib/auth";
 import { ThemeProvider } from "@/components/theme-provider";
 
-export default function AuthLayout({ children }: { children: React.ReactNode }) {
+export default async function AuthLayout({ children }: { children: React.ReactNode }) {
+  // DB-checked (see the jwt callback in lib/auth.ts), so a revoked session
+  // sees the login form instead of bouncing to /dashboard.
+  const session = await auth();
+  if (session?.user) redirect("/dashboard");
+
   return (
     <ThemeProvider attribute="class" forcedTheme="light" enableSystem={false}>
       <div className="flex min-h-screen flex-col items-center justify-center bg-muted px-4 py-10">

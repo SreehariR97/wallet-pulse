@@ -14,6 +14,16 @@ Things to run after a schema-changing PR lands in production. Not
 technical debt — these are real steps, kept here so they don't get lost
 in a long README.
 
+### Auth hardening (migration 0008)
+
+**Order matters: run `DATABASE_URL=... pnpm db:migrate` BEFORE deploying
+this code.** The new code reads `users.session_version` on every `auth()`
+call, so deploying first would fail every authenticated request until the
+migration runs. The migration is additive (new `rate_limits` table, new
+column with default 0), so the currently deployed code keeps working
+after it's applied. Existing sessions stay valid (tokens without a
+version are treated as version 0).
+
 ### credit-cards + remittances feature
 
 _Resolved — migration 0001 applied, `scripts/backfill-transfer-categories.ts`

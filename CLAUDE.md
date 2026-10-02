@@ -87,6 +87,13 @@ src/
 
 Middleware imports ONLY `auth.config.ts` (no DB). The Credentials provider lives in `auth.ts` which imports `db`. This is the standard Auth.js v5 pattern — keep the split.
 
+### Critical: session revocation and auth rate limits
+
+- `auth.ts` extends the edge-safe `jwt` callback with `revalidateSessionToken` (`src/lib/auth/credentials.ts`): every server-side `auth()` call does one PK lookup on `users` and ends the session if the user is gone or `users.session_version` no longer matches the token's `sv`. It also refreshes `currency` from the DB. Password change bumps `session_version`, which signs out every device.
+- Because middleware can't see the DB, it must never redirect based on "looks signed in" — a revoked token would loop between `/login` and `/dashboard`. The "signed-in user visiting /login" redirect lives in `src/app/(auth)/layout.tsx`.
+- Login (per IP + per email), registration (per IP) and password change (per user) are rate-limited by `src/lib/rate-limit.ts`, a fixed-window counter in the `rate_limits` table (one atomic upsert per check). Use `consumeRateLimit` for any new unauthenticated or credential-checking endpoint.
+- Security headers (CSP, frame-ancestors, HSTS, nosniff…) are set in `next.config.mjs`. Adding a third-party script/font/API origin means adding it to the CSP there.
+
 ### Critical: Postgres driver choices
 
 - **Runtime queries** use `@neondatabase/serverless` + `drizzle-orm/neon-http` (`src/lib/db/index.ts`). HTTP-based, no connection pooling needed, works on Vercel Edge + Node runtimes.

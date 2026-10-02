@@ -61,7 +61,7 @@ export function RegisterForm() {
       </div>
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
-        <Input id="password" name="password" type="password" autoComplete="new-password" required placeholder="At least 6 characters" />
+        <Input id="password" name="password" type="password" autoComplete="new-password" required minLength={8} placeholder="At least 8 characters" />
         {errors.password && <p className="text-xs font-[500] text-destructive">{errors.password[0]}</p>}
       </div>
       <Button type="submit" className="w-full" disabled={pending}>
