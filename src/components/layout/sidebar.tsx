@@ -26,6 +26,7 @@ export function Sidebar({ user }: { user: { name: string; email: string } }) {
             <Link
               key={item.href}
               href={item.href}
+              aria-current={active ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-[460] transition-colors",
                 active
@@ -33,7 +34,7 @@ export function Sidebar({ user }: { user: { name: string; email: string } }) {
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-4 w-4" aria-hidden />
               {item.label}
             </Link>
           );

@@ -90,7 +90,7 @@ export function MonthYearPicker({
         </div>
         <div
           className="mt-3 grid grid-cols-3 gap-1.5"
-          role="grid"
+          role="group"
           aria-label={`Months in ${displayedYear}`}
         >
           {MONTH_INDICES.map((m) => {

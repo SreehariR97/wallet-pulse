@@ -17,12 +17,13 @@ export function MobileNav() {
             <li key={item.href}>
               <Link
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex flex-col items-center gap-0.5 py-3 text-[10px] tracking-[-0.005em] transition-colors",
                   active ? "text-foreground font-[600]" : "text-muted-foreground font-[500]"
                 )}
               >
-                <Icon className="h-5 w-5" />
+                <Icon className="h-5 w-5" aria-hidden />
                 {item.label}
               </Link>
             </li>

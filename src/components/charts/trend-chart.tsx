@@ -8,6 +8,7 @@ import {
   CHART_SUCCESS,
   GRID_STROKE,
   TOOLTIP_BG,
+  TOOLTIP_ITEM_STYLE,
   TOOLTIP_BORDER,
 } from "./palette";
 
@@ -48,64 +49,91 @@ export function TrendChart({
     );
   }
 
-  const Chart: any = mode === "line" ? LineChart : AreaChart;
+  const Chart = mode === "line" ? LineChart : AreaChart;
+
+  // Days with no activity are left out of the screen-reader table.
+  const nonZero = data.filter((d) => d.income !== 0 || d.expense !== 0);
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <Chart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-        <defs>
-          <linearGradient id="gradExpense" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={CHART_DESTRUCTIVE} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={CHART_DESTRUCTIVE} stopOpacity={0} />
-          </linearGradient>
-          <linearGradient id="gradIncome" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={CHART_SUCCESS} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={CHART_SUCCESS} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
-        <XAxis dataKey="bucket" tickFormatter={tickFormatter} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} />
-        <YAxis tickFormatter={(v) => formatCompactCurrency(v, currency)} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
-        <Tooltip
-          contentStyle={{
-            background: TOOLTIP_BG,
-            border: `1px solid ${TOOLTIP_BORDER}`,
-            borderRadius: "0.75rem",
-            fontSize: 12,
-          }}
-          labelFormatter={(v) => tickFormatter(String(v))}
-          formatter={(value: number, name: string) => [formatCurrency(value, currency), name.charAt(0).toUpperCase() + name.slice(1)]}
-        />
-        {mode === "line" ? (
-          <>
-            {showIncome && (
-              <Line
-                type="monotone"
-                dataKey="income"
-                stroke={CHART_SUCCESS}
-                strokeWidth={2.25}
-                dot={{ r: 2.5, fill: CHART_SUCCESS, strokeWidth: 0 }}
-                activeDot={{ r: 4 }}
-              />
-            )}
-            <Line
-              type="monotone"
-              dataKey="expense"
-              stroke={CHART_DESTRUCTIVE}
-              strokeWidth={2.25}
-              dot={{ r: 2.5, fill: CHART_DESTRUCTIVE, strokeWidth: 0 }}
-              activeDot={{ r: 4 }}
+    <>
+      <table className="sr-only">
+        <caption>Income and expenses per {granularity === "monthly" ? "month" : "day"}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{granularity === "monthly" ? "Month" : "Day"}</th>
+            {showIncome && <th scope="col">Income</th>}
+            <th scope="col">Expenses</th>
+          </tr>
+        </thead>
+        <tbody>
+          {nonZero.map((d) => (
+            <tr key={d.bucket}>
+              <th scope="row">{tickFormatter(d.bucket)}</th>
+              {showIncome && <td>{formatCurrency(d.income, currency)}</td>}
+              <td>{formatCurrency(d.expense, currency)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div aria-hidden>
+        <ResponsiveContainer width="100%" height={280}>
+          <Chart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gradExpense" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={CHART_DESTRUCTIVE} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={CHART_DESTRUCTIVE} stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gradIncome" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={CHART_SUCCESS} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={CHART_SUCCESS} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+            <XAxis dataKey="bucket" tickFormatter={tickFormatter} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} />
+            <YAxis tickFormatter={(v) => formatCompactCurrency(v, currency)} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
+            <Tooltip
+              itemStyle={TOOLTIP_ITEM_STYLE}
+              contentStyle={{
+                background: TOOLTIP_BG,
+                border: `1px solid ${TOOLTIP_BORDER}`,
+                borderRadius: "0.75rem",
+                fontSize: 12,
+              }}
+              labelFormatter={(v) => tickFormatter(String(v))}
+              formatter={(value: number, name: string) => [formatCurrency(value, currency), name.charAt(0).toUpperCase() + name.slice(1)]}
             />
-          </>
-        ) : (
-          <>
-            {showIncome && (
-              <Area type="monotone" dataKey="income" stroke={CHART_SUCCESS} strokeWidth={2.25} fill="url(#gradIncome)" />
+            {mode === "line" ? (
+              <>
+                {showIncome && (
+                  <Line
+                    type="monotone"
+                    dataKey="income"
+                    stroke={CHART_SUCCESS}
+                    strokeWidth={2.25}
+                    dot={{ r: 2.5, fill: CHART_SUCCESS, strokeWidth: 0 }}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
+                <Line
+                  type="monotone"
+                  dataKey="expense"
+                  stroke={CHART_DESTRUCTIVE}
+                  strokeWidth={2.25}
+                  dot={{ r: 2.5, fill: CHART_DESTRUCTIVE, strokeWidth: 0 }}
+                  activeDot={{ r: 4 }}
+                />
+              </>
+            ) : (
+              <>
+                {showIncome && (
+                  <Area type="monotone" dataKey="income" stroke={CHART_SUCCESS} strokeWidth={2.25} fill="url(#gradIncome)" />
+                )}
+                <Area type="monotone" dataKey="expense" stroke={CHART_DESTRUCTIVE} strokeWidth={2.25} fill="url(#gradExpense)" />
+              </>
             )}
-            <Area type="monotone" dataKey="expense" stroke={CHART_DESTRUCTIVE} strokeWidth={2.25} fill="url(#gradExpense)" />
-          </>
-        )}
-      </Chart>
-    </ResponsiveContainer>
+          </Chart>
+        </ResponsiveContainer>
+      </div>
+    </>
   );
 }

@@ -95,7 +95,7 @@ export function CardTile({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
                 aria-label="Card actions"
               >
                 <MoreHorizontal className="h-4 w-4" />

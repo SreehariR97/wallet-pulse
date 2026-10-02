@@ -9,6 +9,7 @@ import {
   CURSOR_FILL,
   GRID_STROKE,
   TOOLTIP_BG,
+  TOOLTIP_ITEM_STYLE,
   TOOLTIP_BORDER,
 } from "./palette";
 import type { TrendPoint } from "./trend-chart";
@@ -40,6 +41,7 @@ export function IncomeExpenseBars({
         <XAxis dataKey="bucket" tickFormatter={tickFormatter} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} />
         <YAxis tickFormatter={(v) => formatCompactCurrency(v, currency)} tick={{ fill: AXIS_TICK, fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
         <Tooltip
+          itemStyle={TOOLTIP_ITEM_STYLE}
           contentStyle={{
             background: TOOLTIP_BG,
             border: `1px solid ${TOOLTIP_BORDER}`,
