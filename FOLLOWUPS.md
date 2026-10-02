@@ -14,6 +14,31 @@ Things to run after a schema-changing PR lands in production. Not
 technical debt — these are real steps, kept here so they don't get lost
 in a long README.
 
+### Data integrity (migration 0009)
+
+Apply after 0008 (`pnpm db:migrate` runs both, in order). Needs Postgres
+15+ (`UNIQUE NULLS NOT DISTINCT`) — Neon is 16/17. Before adding its
+constraints the migration repairs existing rows, which changes data:
+
+- **Duplicate default categories** (same user, type and name, both
+  `is_default`) are merged into the oldest copy; their transactions and
+  budgets are repointed first. User-created categories are untouched.
+- **Duplicate budgets** for the same user, category and period (including
+  several category-less "overall" budgets) keep only the most recently
+  edited one; the others are **deleted**.
+- **Credit-card cycles:** rows duplicating a card's close date are deleted
+  (an issued row wins over a projected one); projected rows that aren't
+  the card's newest cycle become issued; a card whose newest cycle is
+  issued gets a projected cycle 30 days later; every `amount_paid` is
+  recomputed from transactions.
+
+To preview what the budget clean-up would delete in production, run this first:
+
+```sql
+SELECT user_id, category_id, period, count(*)
+FROM budgets GROUP BY 1, 2, 3 HAVING count(*) > 1;
+```
+
 ### Auth hardening (migration 0008)
 
 **Order matters: run `DATABASE_URL=... pnpm db:migrate` BEFORE deploying

@@ -116,26 +116,31 @@ This pattern was added after two routes (remittances POST and PATCH) shipped wit
 
 ### Credit-card cycles
 
-`credit_card_cycles` is the source of truth for statement dates, balances, minimums, and payment progress. Every card has exactly one projected cycle (the one currently accruing) plus any number of issued (real) cycles behind it. The legacy `credit_cards.statement_day` / `payment_due_day` integers are gone — all cycle reads flow through the cycles table. Card POST writes card + projected cycle atomically; every route that reads "current cycle" selects the row with the newest `cycleCloseDate`.
+`credit_card_cycles` is the source of truth for statement dates, balances, minimums, and payment progress. Every card has exactly one projected cycle (the one currently accruing) plus any number of issued (real) cycles behind it. The legacy `credit_cards.statement_day` / `payment_due_day` integers are gone — all cycle reads flow through the cycles table. Card POST writes card + cycle atomically; every route that reads "current cycle" selects the row with the newest `cycleCloseDate`.
 
-"Mark statement issued" is the only path that promotes a projected cycle to a real one — PATCH `/api/credit-cards/:id/cycles/:cycleId` flips `is_projected` false, stamps `statement_balance` + `minimum_payment`, and inserts the next projected cycle atomically.
+The database enforces the invariant: `ccc_one_projected_per_card` (partial unique index on `card_id WHERE is_projected`) and `ccc_card_close_uniq` (`card_id, cycle_close_date`). So **any path that writes a real (issued) cycle must insert the next projected cycle in the same atomic unit** — use `nextProjectedCycleDates()` from `src/lib/credit-cards.ts`. The three such paths: mark-statement-issued (PATCH `/api/credit-cards/:id/cycles/:cycleId`, the normal one; its UPDATE is guarded by `is_projected` so a double submit returns 409), card POST with a statement balance + minimum, and card PATCH with a statement balance + minimum.
 
 ### Credit-card cycle allocation
 
 Payments on a credit card (type=transfer + creditCardId) are allocated to a cycle row via the half-open interval `(cycleCloseDate, paymentDueDate]`. The `amount_paid` column is kept in sync by:
 
-- `POST /api/credit-cards/:id/pay` — atomic batch of `[INSERT tx, ...UPDATE cycles]`
+- `POST /api/credit-cards/:id/pay` — atomic batch of `[lockCard, INSERT tx, reallocateCardCycles]`
+- Mark-issued and card PATCH — end their atomic batch with `reallocateCardCycles` (cycle dates may move)
 - `POST /api/transactions` — recomputes after an inserted transfer
 - `PUT /api/transactions/:id` — recomputes after any allocation-affecting edit (date, amount, creditCardId, or type flip into/out of transfer); sweeps old AND new card when the link changes
-- `DELETE /api/transactions/:id` — recomputes after removing a transfer
+- `DELETE /api/transactions/:id` and `DELETE /api/transactions/bulk` — recompute after removing transfers
 
-The pure allocation rule lives in `src/lib/credit-cards.ts::allocateCycleForPayment`. The DB-touching `recomputeCardCycleAllocations` (in `src/lib/credit-card-allocation.ts`) is a self-healing full sweep — it re-derives every cycle's `amount_paid` from scratch each time, so an occasional divergence self-corrects on the next write. CSV import and bulk-delete intentionally do NOT recompute (cost/complexity trade-off); the next pay or transaction edit sweeps them in.
+The pure allocation rule lives in `src/lib/credit-cards.ts::allocateCycleForPayment` (reference implementation: `computeCycleAmountsPaid`). What gets persisted is its SQL port, `reallocateCardCycles` in `src/lib/credit-card-allocation.ts` — one UPDATE that re-derives every cycle's `amount_paid` from scratch, so divergence self-corrects. A test pins the SQL to the JS rule on randomized data.
+
+**Never compute `amount_paid` in JS and write it back** — two concurrent payments each read a snapshot and one overwrites the other (reproduced: 20 parallel $10 payments recorded $30). Instead, in one atomic unit: `lockCard` (SELECT … FOR UPDATE on the card row) first, then your writes, then `reallocateCardCycles`. Under READ COMMITTED each statement gets a fresh snapshot, so the UPDATE after the lock sees every committed payment. `recomputeCardCycleAllocations` does exactly this for callers outside a batch. CSV import never links transactions to cards, so it doesn't recompute.
 
 ## Database schema
 
-Tables: `users`, `categories` (per-user), `transactions`, `budgets`. Timestamps stored as `timestamp with time zone`. Amounts as `double precision`. See `src/lib/db/schema.ts`.
+Tables: `users`, `categories` (per-user), `transactions`, `budgets`, `credit_cards`, `credit_card_cycles`, `remittances`, `rate_limits`. Timestamps stored as `timestamp with time zone`; transaction/budget dates are civil `date` columns compared as YYYY-MM-DD strings. Money is `numeric(14,2)` (converted with `Number()` only when building DTOs). See `src/lib/db/schema.ts`.
 
-20 default categories seeded on registration via `seedDefaultCategoriesForUser(userId)` (18 expense/income + 2 loan). `seedDefaultCategoriesForUser` is now `async`, so it must be `await`ed.
+Constraints worth knowing (migration 0009): one budget per `(user, category, period)` including the category-less overall budget (`NULLS NOT DISTINCT`, so Postgres 15+); one copy of each *default* category name per user (user-created categories may share names); `amount > 0` and enum CHECKs on transactions/budgets/categories (added `NOT VALID`, so legacy rows aren't re-checked). Catch unique violations with `isUniqueViolation(err)` from `src/lib/api.ts` and return 409. Validate dates with `isoDate()` and money with `moneyAmount()` from `src/lib/validations/common.ts` — a bare regex accepts 2026-02-31 and `.positive()` accepts 0.001.
+
+22 default categories seeded on registration, in the same atomic unit as the user row (`defaultCategoryRows(userId)` in `src/lib/db/seed.ts`). The categories GET backfill only restores the two transfer categories that the pay/remittance routes look up by name; other deleted defaults stay deleted.
 
 ## API conventions
 
