@@ -1,4 +1,4 @@
-import { isRealCivilDate } from "@/lib/validations/common";
+import { isRealCivilDate } from "@/lib/civil-date";
 
 /** How to read an ambiguous numeric date like 03/04/2026. */
 export type DateOrder = "MDY" | "DMY";

@@ -1,6 +1,11 @@
 "use client";
+import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
+import { format } from "date-fns";
+import { useSyncToUrl } from "@/hooks/useUrlState";
+import { parseMonthParam } from "@/lib/url-state";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
@@ -20,7 +25,12 @@ import type { TransactionListItem } from "@/types";
 import type { CreditCardSummary } from "@/components/credit-cards/card-tile";
 
 export function DashboardView({ userName, currency }: { userName: string; currency: string }) {
-  const range = useMonthRange();
+  const searchParams = useSearchParams();
+  const [initialMonth] = React.useState(() => parseMonthParam(searchParams.get("month")));
+  const range = useMonthRange(initialMonth);
+  // The current month is the default, so it stays out of the URL.
+  const monthParam = range.from.slice(0, 7);
+  useSyncToUrl({ month: monthParam === format(new Date(), "yyyy-MM") ? undefined : monthParam });
   const qs = `from=${range.from}&to=${range.to}`;
   const summary = useSWR<ApiEnvelope<SummaryData>>(`/api/analytics/summary?${qs}`);
   const trend = useSWR<ApiEnvelope<TrendPoint[]>>(`/api/analytics/trends?${qs}&granularity=daily`);

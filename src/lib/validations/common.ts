@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { isRealCivilDate } from "@/lib/civil-date";
+
+export { isRealCivilDate };
 
 /**
  * A real calendar date in YYYY-MM-DD form. The regex alone accepts
@@ -10,14 +13,6 @@ export function isoDate(message = "Invalid date (expected YYYY-MM-DD)") {
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, message)
     .refine(isRealCivilDate, message);
-}
-
-export function isRealCivilDate(value: string): boolean {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!m) return false;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const dt = new Date(Date.UTC(y, mo - 1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
 }
 
 /** Largest value numeric(14,2) can hold. */

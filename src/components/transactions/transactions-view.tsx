@@ -13,25 +13,31 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { TransactionFilters, type TxFilterValues } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
 import useSWR from "swr";
+import { useSearchParams } from "next/navigation";
+import { useSyncToUrl } from "@/hooks/useUrlState";
+import { parseTransactionsUrl, transactionsUrlParams, type TxSortKey, type TxSortOrder } from "@/lib/url-state";
 import { ErrorState } from "@/components/shared/error-state";
 import { apiFetch, errorMessage, jsonBody, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 import type { TransactionListItem, ListMeta } from "@/types";
 
-type SortKey = "date" | "amount" | "description" | "createdAt";
-type SortOrder = "asc" | "desc";
+type SortKey = TxSortKey;
 
 export function TransactionsView({ currency }: { currency: string }) {
-  const [filters, setFilters] = React.useState<TxFilterValues>({});
-  const [search, setSearch] = React.useState("");
-  const [sort, setSort] = React.useState<SortKey>("date");
-  const [order, setOrder] = React.useState<SortOrder>("desc");
+  // Initial state comes from the URL, so refresh, Back from an edit page and
+  // shared links keep the filters, sort and page.
+  const searchParams = useSearchParams();
+  const [initial] = React.useState(() => parseTransactionsUrl(searchParams));
+  const [filters, setFilters] = React.useState<TxFilterValues>(initial.filters);
+  const [search, setSearch] = React.useState(initial.search);
+  const [sort, setSort] = React.useState<SortKey>(initial.sort);
+  const [order, setOrder] = React.useState<TxSortOrder>(initial.order);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [bulkConfirm, setBulkConfirm] = React.useState(false);
   const [bulkPending, setBulkPending] = React.useState(false);
 
   // Search and the free-text filters (amounts, tags) are debounced together
   // so typing "150" is one request, not three.
-  const [debounced, setDebounced] = React.useState({ search: "", filters });
+  const [debounced, setDebounced] = React.useState({ search: initial.search, filters });
   React.useEffect(() => {
     const t = setTimeout(() => setDebounced({ search: search.trim(), filters }), 300);
     return () => clearTimeout(t);
@@ -60,13 +66,15 @@ export function TransactionsView({ currency }: { currency: string }) {
     return p.toString();
   }, [debounced, sort, order]);
 
-  const [pageState, setPageState] = React.useState({ base: baseQuery, page: 1 });
+  const [pageState, setPageState] = React.useState({ base: baseQuery, page: initial.page });
   const page = pageState.base === baseQuery ? pageState.page : 1;
   const setPage = (n: number) => setPageState({ base: baseQuery, page: n });
 
   React.useEffect(() => {
     setSelected(new Set());
   }, [baseQuery]);
+
+  useSyncToUrl(transactionsUrlParams({ filters: debounced.filters, search: debounced.search, sort, order, page }));
 
   // SWR only ever renders the response for the current key, so a slow
   // response for an old filter can't overwrite a newer one.

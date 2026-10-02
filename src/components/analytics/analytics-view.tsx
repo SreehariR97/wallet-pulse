@@ -12,11 +12,14 @@ import type { CategorySlice } from "@/components/charts/category-donut";
 import type { PaymentMethodSlice } from "@/components/charts/payment-donut";
 import { SpendingHeatmap } from "@/components/charts/spending-heatmap";
 import { MomTable } from "./mom-table";
+import { useSearchParams } from "next/navigation";
+import { useSyncToUrl } from "@/hooks/useUrlState";
+import { parseAnalyticsUrl, type AnalyticsPreset } from "@/lib/url-state";
 import useSWR from "swr";
 import { ErrorState } from "@/components/shared/error-state";
 import { revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 
-type RangePreset = "thisMonth" | "last3" | "last6" | "thisYear" | "lastYear" | "all" | "custom";
+type RangePreset = AnalyticsPreset;
 
 function rangeFor(preset: RangePreset, customFrom?: string, customTo?: string): { from: string; to: string; granularity: "daily" | "monthly" } {
   const today = new Date();
@@ -46,9 +49,16 @@ function rangeFor(preset: RangePreset, customFrom?: string, customTo?: string): 
 }
 
 export function AnalyticsView({ currency }: { currency: string }) {
-  const [preset, setPreset] = React.useState<RangePreset>("thisMonth");
-  const [customFrom, setCustomFrom] = React.useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [customTo, setCustomTo] = React.useState(format(new Date(), "yyyy-MM-dd"));
+  const searchParams = useSearchParams();
+  const [initial] = React.useState(() => parseAnalyticsUrl(searchParams));
+  const [preset, setPreset] = React.useState<RangePreset>(initial.preset);
+  const [customFrom, setCustomFrom] = React.useState(initial.from ?? format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [customTo, setCustomTo] = React.useState(initial.to ?? format(new Date(), "yyyy-MM-dd"));
+  useSyncToUrl(
+    preset === "custom"
+      ? { range: preset, from: customFrom || undefined, to: customTo || undefined }
+      : { range: preset === "thisMonth" ? undefined : preset },
+  );
 
   const { from, to, granularity } = rangeFor(preset, customFrom, customTo);
 
