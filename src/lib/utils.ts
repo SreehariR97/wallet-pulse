@@ -21,12 +21,14 @@ export function formatCurrency(amount: number, currency = "USD", signed = false)
 
 export function formatCompactCurrency(amount: number, currency = "USD"): string {
   // maximumFractionDigits:1 caps the "$1.2K" decimal in compact mode.
-  // We deliberately don't set a minimum — Intl already suppresses trailing
-  // zeros for zero-decimal currencies (JPY → "¥10M", not "¥10.0M").
+  // minimumFractionDigits:0 is required too: newer ICU builds (Node 22.22+)
+  // keep the currency's default minimum in compact mode, which turns "$10M"
+  // into "$10.0M".
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
     notation: "compact",
+    minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(amount);
 }
