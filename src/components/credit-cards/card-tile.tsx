@@ -153,7 +153,7 @@ export function CardTile({
 
           <div className="mt-3">
             {util > 0 ? (
-              <Progress value={util} indicatorClassName={utilBar(util)} />
+              <Progress value={util} indicatorClassName={utilBar(util)} aria-label={`${card.name} utilization`} />
             ) : (
               <div className="h-2" />
             )}

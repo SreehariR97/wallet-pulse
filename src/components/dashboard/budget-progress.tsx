@@ -87,7 +87,11 @@ export function BudgetProgressList({
                 {formatCurrency(b.spent, currency)} / {formatCurrency(b.amount, currency)}
               </span>
             </div>
-            <Progress value={clamped} indicatorClassName={cn(color, pct >= 100 && "animate-pulse")} />
+            <Progress
+              value={clamped}
+              indicatorClassName={cn(color, pct >= 100 && "animate-pulse")}
+              aria-label={`${b.categoryName ?? "Overall"} budget used`}
+            />
           </div>
         );
       })}

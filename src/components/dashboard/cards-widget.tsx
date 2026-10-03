@@ -81,7 +81,7 @@ export function CardsWidget({
                   </div>
                   <div className="mt-2">
                     {util > 0 ? (
-                      <Progress value={util} indicatorClassName={utilBar(util)} className="h-1.5" />
+                      <Progress value={util} indicatorClassName={utilBar(util)} className="h-1.5" aria-label={`${c.name} utilization`} />
                     ) : (
                       <div className="h-1.5" />
                     )}

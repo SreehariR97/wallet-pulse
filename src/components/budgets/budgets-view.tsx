@@ -196,7 +196,12 @@ export function BudgetsView({ currency }: { currency: string }) {
                           of {formatCurrencyAuto(b.amount, currency)}
                         </span>
                       </div>
-                      <Progress value={clamped} className="mt-3" indicatorClassName={cn(color, pct >= 100 && "animate-pulse")} />
+                      <Progress
+                        value={clamped}
+                        className="mt-3"
+                        indicatorClassName={cn(color, pct >= 100 && "animate-pulse")}
+                        aria-label={`${b.categoryName ?? "Overall"} budget used`}
+                      />
                       <div className="mt-2 flex justify-between gap-2 text-[11px] font-[500] text-muted-foreground">
                         <span className="tabular-nums">{pct.toFixed(0)}% used</span>
                         <span

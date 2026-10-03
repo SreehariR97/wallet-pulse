@@ -352,7 +352,7 @@ export function CardDetailView({
                 {formatCurrencyAuto(Math.max(0, card.balance), currency)}
               </div>
               <div className="mt-3 space-y-1.5">
-                <Progress value={util} indicatorClassName={utilBar(util)} />
+                <Progress value={util} indicatorClassName={utilBar(util)} aria-label="Credit utilization" />
                 <div className="flex items-center justify-between text-[12px] font-[460] text-muted-foreground tabular-nums">
                   <span>{util.toFixed(0)}% utilization</span>
                   <span>{formatCurrency(card.creditLimit, currency)} limit</span>
