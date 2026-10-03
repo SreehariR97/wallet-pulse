@@ -71,6 +71,8 @@ export async function GET(req: Request) {
       date: transactions.date,
       paymentMethod: transactions.paymentMethod,
       accountId: transactions.accountId,
+      isRecurring: transactions.isRecurring,
+      recurringFrequency: transactions.recurringFrequency,
     })
     .from(remittances)
     .innerJoin(transactions, eq(remittances.transactionId, transactions.id))
@@ -99,6 +101,8 @@ export async function GET(req: Request) {
     date: r.date,
     paymentMethod: r.paymentMethod,
     accountId: r.accountId,
+    isRecurring: r.isRecurring,
+    recurringFrequency: r.recurringFrequency,
   }));
   return ok(items satisfies RemittanceDTO[], { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) });
 }
@@ -216,6 +220,8 @@ export async function POST(req: Request) {
         date: tx.date,
         paymentMethod: tx.paymentMethod,
         accountId: tx.accountId,
+        isRecurring: tx.isRecurring,
+        recurringFrequency: tx.recurringFrequency,
       } satisfies RemittanceDTO,
       { created: true },
     );

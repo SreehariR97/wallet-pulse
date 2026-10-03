@@ -59,6 +59,8 @@ interface RemittanceRow {
   date: string | number | Date;
   paymentMethod: string;
   accountId: string | null;
+  isRecurring: boolean;
+  recurringFrequency: string | null;
 }
 
 function monthStartISO(now = new Date()): string {
@@ -116,8 +118,8 @@ export function RemittancesView({ currency }: { currency: string }) {
         fee: editing.fee,
         service: editing.service,
         recipientNote: editing.recipientNote,
-        isRecurring: false,
-        recurringFrequency: null,
+        isRecurring: editing.isRecurring,
+        recurringFrequency: editing.recurringFrequency,
         accountId: editing.accountId ?? null,
       }
     : null;

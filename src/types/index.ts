@@ -292,14 +292,14 @@ export interface RemittanceDTO {
   paymentMethod: PaymentMethod;
   /** Account the money was sent from. */
   accountId: string | null;
-}
-
-/** Detail/PATCH response includes tx-side recurrence + tags + owning userId
- *  that the list projection intentionally omits. */
-export interface RemittanceDetailDTO extends RemittanceDTO {
-  userId: string;
   isRecurring: boolean;
   recurringFrequency: RecurringFrequency | null;
+}
+
+/** Detail/PATCH response adds tags + owning userId, which the list
+ *  projection omits. */
+export interface RemittanceDetailDTO extends RemittanceDTO {
+  userId: string;
   tags: string | null;
 }
 
