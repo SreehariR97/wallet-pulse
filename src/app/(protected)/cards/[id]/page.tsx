@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { CardDetailView } from "@/components/credit-cards/card-detail-view";
+
+export const metadata: Metadata = { title: "Card" };
 
 export const dynamic = "force-dynamic";
 

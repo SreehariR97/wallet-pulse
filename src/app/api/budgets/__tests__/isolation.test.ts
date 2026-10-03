@@ -121,3 +121,33 @@ describe("POST /api/budgets — cross-tenant FK re-verification", () => {
     expect(body.error).toBe("Invalid category");
   });
 });
+
+describe("PUT /api/budgets/:id — cross-tenant FK re-verification", () => {
+  it("put: re-pointing A's budget at B's category returns 400; budget unchanged", async () => {
+    asA();
+    const req = jsonReq("http://localhost", { categoryId: B.catId }, "PUT");
+    const res = (await putById(req, { params: { id: A.budgetId } })) as Response;
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Invalid category");
+
+    const [row] = await currentDb
+      .select()
+      .from(schema.budgets)
+      .where(eq(schema.budgets.id, A.budgetId));
+    expect(row!.categoryId).toBe(A.catId);
+  });
+
+  it("list: a foreign categoryId already stored never surfaces B's category details", async () => {
+    // Simulate a row written before the PUT check existed.
+    await currentDb
+      .update(schema.budgets)
+      .set({ categoryId: B.catId })
+      .where(eq(schema.budgets.id, A.budgetId));
+    asA();
+    const res = (await listGet()) as Response;
+    const rows = (await res.json()).data as Array<{ id: string; categoryName: string | null }>;
+    const aBudget = rows.find((r) => r.id === A.budgetId);
+    expect(aBudget!.categoryName).toBeNull();
+  });
+});

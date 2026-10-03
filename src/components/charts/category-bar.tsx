@@ -1,7 +1,8 @@
 "use client";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatCompactCurrency, formatCurrency } from "@/lib/utils";
-import { AXIS_LABEL, AXIS_TICK, CURSOR_FILL, TOOLTIP_BG, TOOLTIP_BORDER } from "./palette";
+import { AXIS_LABEL, AXIS_TICK, CURSOR_FILL, TOOLTIP_BG,
+  TOOLTIP_ITEM_STYLE, TOOLTIP_BORDER } from "./palette";
 import type { CategorySlice } from "./category-donut";
 
 export function CategoryBar({ data, currency }: { data: CategorySlice[]; currency: string }) {
@@ -28,6 +29,7 @@ export function CategoryBar({ data, currency }: { data: CategorySlice[]; currenc
           tickLine={false}
         />
         <Tooltip
+          itemStyle={TOOLTIP_ITEM_STYLE}
           contentStyle={{
             background: TOOLTIP_BG,
             border: `1px solid ${TOOLTIP_BORDER}`,

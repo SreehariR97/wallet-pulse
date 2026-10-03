@@ -15,10 +15,32 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { cn, currencySymbol, dateFromSeconds, formatCivilDate, formatCurrency, formatFxRate } from "@/lib/utils";
+import { cn, currencySymbol, formatAmountFor, formatCivilDate, formatCurrency, formatFxRate } from "@/lib/utils";
 import { RemittanceForm, type RemittanceFormInitial } from "./remittance-form";
 import { RemittanceStats, type StatsData } from "./stats-cards";
 import { ServiceBadge } from "./service-badge";
+import useSWR from "swr";
+import { ErrorState } from "@/components/shared/error-state";
+import { apiFetch, errorMessage, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
+
+const PAGE_SIZE = 50;
+
+type StatsRow = { totalSent: number; totalFees: number; count: number };
+
+async function loadStats(): Promise<StatsData> {
+  const [mtd, ytd, all] = await Promise.all([
+    apiFetch<StatsRow[]>(`/api/remittances/stats?from=${monthStartISO()}`),
+    apiFetch<StatsRow[]>(`/api/remittances/stats?from=${yearStartISO()}`),
+    apiFetch<StatsData["allTime"]>("/api/remittances/stats"),
+  ]);
+  const sum = (rows: StatsRow[], k: keyof StatsRow) => rows.reduce((s, r) => s + Number(r[k] ?? 0), 0);
+  return {
+    allTime: all.data,
+    monthToDateSent: sum(mtd.data, "totalSent"),
+    yearToDateFees: sum(ytd.data, "totalFees"),
+    totalCount: sum(all.data, "count"),
+  };
+}
 
 interface RemittanceRow {
   id: string;
@@ -36,6 +58,9 @@ interface RemittanceRow {
   notes: string | null;
   date: string | number | Date;
   paymentMethod: string;
+  accountId: string | null;
+  isRecurring: boolean;
+  recurringFrequency: string | null;
 }
 
 function monthStartISO(now = new Date()): string {
@@ -46,59 +71,28 @@ function yearStartISO(now = new Date()): string {
 }
 
 export function RemittancesView({ currency }: { currency: string }) {
-  const [rows, setRows] = React.useState<RemittanceRow[]>([]);
-  const [stats, setStats] = React.useState<StatsData | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [statsLoading, setStatsLoading] = React.useState(true);
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<RemittanceRow | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<RemittanceRow | null>(null);
+  const [page, setPage] = React.useState(1);
 
-  const loadList = React.useCallback(async () => {
-    setLoading(true);
-    const res = await fetch("/api/remittances?limit=100");
-    const json = await res.json();
-    setRows(json.data ?? []);
-    setLoading(false);
-  }, []);
-
-  const loadStats = React.useCallback(async () => {
-    setStatsLoading(true);
-    const [mtdRes, ytdRes, allRes] = await Promise.all([
-      fetch(`/api/remittances/stats?from=${monthStartISO()}`),
-      fetch(`/api/remittances/stats?from=${yearStartISO()}`),
-      fetch(`/api/remittances/stats`),
-    ]);
-    const mtd = (await mtdRes.json()).data ?? [];
-    const ytd = (await ytdRes.json()).data ?? [];
-    const all = (await allRes.json()).data ?? [];
-    const monthToDateSent = mtd.reduce(
-      (s: number, r: { totalSent: number }) => s + Number(r.totalSent ?? 0),
-      0,
-    );
-    const yearToDateFees = ytd.reduce(
-      (s: number, r: { totalFees: number }) => s + Number(r.totalFees ?? 0),
-      0,
-    );
-    const totalCount = all.reduce(
-      (s: number, r: { count: number }) => s + Number(r.count ?? 0),
-      0,
-    );
-    setStats({ allTime: all, monthToDateSent, yearToDateFees, totalCount });
-    setStatsLoading(false);
-  }, []);
-
-  React.useEffect(() => {
-    loadList();
-    loadStats();
-  }, [loadList, loadStats]);
+  const list = useSWR<ApiEnvelope<RemittanceRow[]>>(`/api/remittances?limit=${PAGE_SIZE}&page=${page}`);
+  const rows = list.data?.data ?? [];
+  const totalPages = Number(list.data?.meta?.totalPages ?? 1);
+  const loading = list.isLoading;
+  // One cache entry for the three stats calls (month, year, all time).
+  const statsReq = useSWR<StatsData>("remittance-stats", loadStats);
+  const stats = statsReq.data ?? null;
+  const statsLoading = statsReq.isLoading;
 
   async function doDelete(r: RemittanceRow) {
-    const res = await fetch(`/api/remittances/${r.id}`, { method: "DELETE" });
-    if (!res.ok) return toast.error("Failed to delete remittance");
-    toast.success("Remittance deleted");
-    loadList();
-    loadStats();
+    try {
+      await apiFetch(`/api/remittances/${r.id}`, { method: "DELETE" });
+      toast.success("Remittance deleted");
+      await revalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to delete remittance"));
+    }
   }
 
   function openNew() {
@@ -124,12 +118,13 @@ export function RemittancesView({ currency }: { currency: string }) {
         fee: editing.fee,
         service: editing.service,
         recipientNote: editing.recipientNote,
-        isRecurring: false,
-        recurringFrequency: null,
+        isRecurring: editing.isRecurring,
+        recurringFrequency: editing.recurringFrequency,
+        accountId: editing.accountId ?? null,
       }
     : null;
 
-  const empty = !loading && rows.length === 0;
+  const empty = !loading && !list.error && rows.length === 0 && page === 1;
 
   return (
     <div className="space-y-6">
@@ -143,7 +138,9 @@ export function RemittancesView({ currency }: { currency: string }) {
         }
       />
 
-      {empty ? (
+      {list.error && !list.data ? (
+        <ErrorState title="Couldn't load your transfers" onRetry={() => void revalidateAll()} />
+      ) : empty ? (
         <EmptyState
           icon={<Send className="h-7 w-7" />}
           title="No transfers yet"
@@ -176,6 +173,21 @@ export function RemittancesView({ currency }: { currency: string }) {
                 onDelete={setConfirmDelete}
               />
             )}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs text-muted-foreground">
+                  Page {page} of {totalPages}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                    Previous
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -184,10 +196,7 @@ export function RemittancesView({ currency }: { currency: string }) {
         open={formOpen}
         onOpenChange={setFormOpen}
         initial={initialForForm}
-        onSaved={() => {
-          loadList();
-          loadStats();
-        }}
+        onSaved={() => void revalidateAll()}
       />
 
       <ConfirmDialog
@@ -267,10 +276,7 @@ function RemittanceList({
                       <span>{formatCurrency(sent, r.fromCurrency ?? currency)}</span>
                       <span className="text-[11px] font-[460] text-muted-foreground">
                         ≈ {currencySymbol(r.toCurrency)}
-                        {delivered.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}{" "}
+                        {formatAmountFor(delivered, r.toCurrency)}{" "}
                         {r.toCurrency}
                       </span>
                     </div>
@@ -278,7 +284,7 @@ function RemittanceList({
                   <td className="px-3 py-3">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button size="icon" variant="ghost" aria-label="Actions">
+                        <Button size="icon" variant="ghost" aria-label={`Actions for ${r.description}`}>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>

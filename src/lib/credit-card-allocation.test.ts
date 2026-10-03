@@ -1,10 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { allocateCycleForPayment } from "./credit-cards";
-import {
-  computeCycleAmountsPaid,
-  diffCycleAmounts,
-  type CycleSlim,
-} from "./credit-card-allocation";
+import { computeCycleAmountsPaid, type CycleSlim } from "./credit-card-allocation";
 
 // Three consecutive cycles, ~monthly, ~23-day grace.
 const CYCLES: CycleSlim[] = [
@@ -88,38 +84,5 @@ describe("computeCycleAmountsPaid", () => {
     ]);
     expect(unallocated).toBe(2);
     expect(perCycle.get("c2")).toBe(50);
-  });
-});
-
-describe("diffCycleAmounts", () => {
-  const seed = CYCLES.map((c) => ({ ...c, amountPaid: 0 }));
-
-  it("returns empty when nothing changes", () => {
-    const perCycle = new Map([["c1", 0], ["c2", 0], ["c3", 0]]);
-    expect(diffCycleAmounts(seed, perCycle)).toEqual([]);
-  });
-
-  it("ignores sub-cent noise (floating-point safe)", () => {
-    const near: typeof seed = seed.map((c) =>
-      c.id === "c2" ? { ...c, amountPaid: 100.003 } : c,
-    );
-    const perCycle = new Map([["c1", 0], ["c2", 100], ["c3", 0]]);
-    expect(diffCycleAmounts(near, perCycle)).toEqual([]);
-  });
-
-  it("emits a diff when the delta exceeds half a cent", () => {
-    const perCycle = new Map([["c1", 0], ["c2", 175.25], ["c3", 0]]);
-    expect(diffCycleAmounts(seed, perCycle)).toEqual([
-      { cycleId: "c2", newAmountStr: "175.25" },
-    ]);
-  });
-
-  it("formats newAmountStr as numeric(14,2)", () => {
-    const perCycle = new Map([["c1", 12.3], ["c2", 0], ["c3", 5]]);
-    const diffs = diffCycleAmounts(seed, perCycle);
-    expect(diffs).toEqual([
-      { cycleId: "c1", newAmountStr: "12.30" },
-      { cycleId: "c3", newAmountStr: "5.00" },
-    ]);
   });
 });

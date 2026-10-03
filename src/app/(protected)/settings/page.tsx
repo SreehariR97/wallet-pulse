@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { SettingsView } from "@/components/settings/settings-view";
+
+export const metadata: Metadata = { title: "Settings" };
 
 export const dynamic = "force-dynamic";
 

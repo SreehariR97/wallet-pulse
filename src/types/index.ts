@@ -26,6 +26,9 @@ export type PaymentMethod = "cash" | "credit_card" | "debit_card" | "bank_transf
 export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly";
 export type RemittanceService = "wise" | "remitly" | "western_union" | "bank_wire" | "other";
 export type BudgetPeriod = "weekly" | "monthly" | "yearly";
+export type AccountType = "checking" | "savings" | "cash" | "wallet" | "other";
+/** How analytics counts money — see src/lib/analytics-flows.ts. */
+export type AnalyticsView = "spending" | "cashflow";
 
 // ── Envelopes ────────────────────────────────────────────────────────
 
@@ -83,6 +86,11 @@ export interface TransactionListItem {
   creditCardId?: string | null;
   creditCardName?: string | null;
   creditCardLast4?: string | null;
+  // Account fields — optional for the same reason as the card fields.
+  accountId?: string | null;
+  accountName?: string | null;
+  transferAccountId?: string | null;
+  transferAccountName?: string | null;
   createdAt: string;
 }
 
@@ -99,12 +107,78 @@ export interface TransactionDTO {
   date: string;
   paymentMethod: PaymentMethod;
   creditCardId: string | null;
+  accountId: string | null;
+  transferAccountId: string | null;
   isRecurring: boolean;
   recurringFrequency: RecurringFrequency | null;
   tags: string | null;
   receiptUrl: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ── Accounts ─────────────────────────────────────────────────────────
+
+export interface AccountDTO {
+  id: string;
+  name: string;
+  type: AccountType;
+  institution: string | null;
+  last4: string | null;
+  openingBalance: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** List shape: the account plus its live balance. */
+export interface AccountListItemDTO extends AccountDTO {
+  balance: number;
+  transactionCount: number;
+  /** Latest reconciliation, or null if the account was never reconciled. */
+  reconciliation: AccountReconciliationStatusDTO | null;
+}
+
+export interface AccountReconciliationStatusDTO {
+  statementDate: string;
+  statementBalance: number;
+  /**
+   * The balance WalletPulse computes for statementDate now. Differs from
+   * statementBalance when the gap wasn't adjusted, or when a transaction on
+   * or before that date changed after reconciling.
+   */
+  balanceNow: number;
+  inSync: boolean;
+}
+
+/** One entry in an account's reconciliation history. */
+export interface AccountReconciliationDTO {
+  id: string;
+  accountId: string;
+  statementDate: string;
+  statementBalance: number;
+  /** What WalletPulse computed for statementDate at the time. */
+  computedBalance: number;
+  /** statementBalance − computedBalance. */
+  difference: number;
+  /** The Balance Adjustment transfer, if one was added (null if declined or since deleted). */
+  adjustmentTransactionId: string | null;
+  createdAt: string;
+}
+
+/** GET /api/accounts/:id/reconcile?date= */
+export interface AccountReconcilePreviewDTO {
+  date: string;
+  /** WalletPulse's balance for the account at the end of `date`. */
+  balance: number;
+  history: AccountReconciliationDTO[];
+}
+
+/** POST /api/accounts/:id/reconcile */
+export interface AccountReconcileResultDTO {
+  reconciliation: AccountReconciliationDTO;
+  adjustment: TransactionDTO | null;
 }
 
 // ── Budgets ──────────────────────────────────────────────────────────
@@ -259,14 +333,16 @@ export interface RemittanceDTO {
   notes: string | null;
   date: string;
   paymentMethod: PaymentMethod;
-}
-
-/** Detail/PATCH response includes tx-side recurrence + tags + owning userId
- *  that the list projection intentionally omits. */
-export interface RemittanceDetailDTO extends RemittanceDTO {
-  userId: string;
+  /** Account the money was sent from. */
+  accountId: string | null;
   isRecurring: boolean;
   recurringFrequency: RecurringFrequency | null;
+}
+
+/** Detail/PATCH response adds tags + owning userId, which the list
+ *  projection omits. */
+export interface RemittanceDetailDTO extends RemittanceDTO {
+  userId: string;
   tags: string | null;
 }
 
@@ -330,6 +406,8 @@ export interface TransactionExportRowDTO {
   isRecurring: boolean;
   recurringFrequency: RecurringFrequency | null;
   tags: string | null;
+  account: string | null;
+  transferToAccount: string | null;
 }
 
 export interface ExportJsonDTO {
@@ -337,6 +415,8 @@ export interface ExportJsonDTO {
   transactions: TransactionExportRowDTO[];
   categories: CategoryDTO[];
   budgets: BudgetDTO[];
+  accounts: AccountDTO[];
+  accountReconciliations: AccountReconciliationDTO[];
 }
 
 // ── User ─────────────────────────────────────────────────────────────

@@ -1,9 +1,12 @@
 import { z } from "zod";
+import { isoDate } from "@/lib/validations/common";
 import { and, eq, gte, lte, asc } from "drizzle-orm";
 import Papa from "papaparse";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
-import { transactions, categories, budgets } from "@/lib/db/schema";
+import { accountReconciliations, accounts, transactions, categories, budgets } from "@/lib/db/schema";
+import { alias } from "drizzle-orm/pg-core";
+import { toAccountDTO, toReconciliationDTO } from "@/lib/dto";
 import { zodFail, requireUser } from "@/lib/api";
 import type {
   ExportJsonDTO,
@@ -16,9 +19,11 @@ const querySchema = z.object({
   // .toLowerCase() in the pre-Zod code accepted arbitrary strings and fell
   // through to the final `fmt !== "csv"` check. Tighten to an explicit enum.
   format: z.enum(["csv", "json"]).default("csv"),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  from: isoDate().optional(),
+  to: isoDate().optional(),
 });
+
+const transferAccount = alias(accounts, "transfer_account");
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -49,9 +54,13 @@ export async function GET(req: Request) {
       isRecurring: transactions.isRecurring,
       recurringFrequency: transactions.recurringFrequency,
       tags: transactions.tags,
+      account: accounts.name,
+      transferToAccount: transferAccount.name,
     })
     .from(transactions)
     .leftJoin(categories, eq(transactions.categoryId, categories.id))
+    .leftJoin(accounts, eq(transactions.accountId, accounts.id))
+    .leftJoin(transferAccount, eq(transactions.transferAccountId, transferAccount.id))
     .where(and(...filters))
     .orderBy(asc(transactions.date));
 
@@ -60,6 +69,11 @@ export async function GET(req: Request) {
   if (fmt === "json") {
     const catRows = await db.select().from(categories).where(eq(categories.userId, auth.userId));
     const budgetRows = await db.select().from(budgets).where(eq(budgets.userId, auth.userId));
+    const accountRows = await db.select().from(accounts).where(eq(accounts.userId, auth.userId));
+    const reconRows = await db
+      .select()
+      .from(accountReconciliations)
+      .where(eq(accountReconciliations.userId, auth.userId));
     const txItems: TransactionExportRowDTO[] = rows.map((r) => ({
       id: r.id,
       date: r.date,
@@ -73,6 +87,8 @@ export async function GET(req: Request) {
       isRecurring: r.isRecurring,
       recurringFrequency: r.recurringFrequency,
       tags: r.tags,
+      account: r.account,
+      transferToAccount: r.transferToAccount,
     }));
     const catItems: CategoryDTO[] = catRows.map((c) => ({
       id: c.id,
@@ -103,6 +119,8 @@ export async function GET(req: Request) {
       transactions: txItems,
       categories: catItems,
       budgets: budgetItems,
+      accounts: accountRows.map(toAccountDTO),
+      accountReconciliations: reconRows.map(toReconciliationDTO),
     };
     return new Response(JSON.stringify(payload satisfies ExportJsonDTO, null, 2), {
       headers: {
@@ -129,8 +147,14 @@ export async function GET(req: Request) {
       Recurring: r.isRecurring ? "yes" : "no",
       Frequency: r.recurringFrequency ?? "",
       Tags: r.tags ?? "",
+      Account: r.account ?? "",
+      "Transfer To": r.transferToAccount ?? "",
     })),
-    { quotes: true }
+    // escapeFormulae prefixes cells starting with = + - @ (tab/CR) with an
+    // apostrophe so a description like `=HYPERLINK(...)` from an imported
+    // bank CSV can't execute when the export is opened in a spreadsheet.
+    // Numeric cells (Amount) are left alone.
+    { quotes: true, escapeFormulae: true }
   );
 
   return new Response(csv, {

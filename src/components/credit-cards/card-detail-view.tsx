@@ -29,7 +29,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ChartCard } from "@/components/charts/chart-container";
-import { CategoryDonut, type CategorySlice } from "@/components/charts/category-donut";
+import { CategoryDonut } from "@/components/charts/lazy";
+import type { CategorySlice } from "@/components/charts/category-donut";
 import { TransactionTable } from "@/components/transactions/transaction-table";
 import { CardForm, type CardFormInitial } from "./card-form";
 import { CyclePicker, type CyclePeriod } from "./cycle-picker";
@@ -38,9 +39,14 @@ import { MarkStatementIssuedDialog, type MarkStatementIssuedInitial } from "./ma
 import { CycleHistoryList } from "./cycle-history-list";
 import type { CreditCardDetailDTO, CreditCardCycleRowDTO, TransactionListItem } from "@/types";
 import { formatCurrency, formatCurrencyAuto, formatUtcDay } from "@/lib/utils";
+import useSWR from "swr";
+import { ErrorState } from "@/components/shared/error-state";
+import { ApiError, apiFetch, errorMessage, jsonBody, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 
 type SortKey = "date" | "amount" | "description" | "createdAt";
 type SortOrder = "asc" | "desc";
+
+const NO_CYCLES: CreditCardCycleRowDTO[] = [];
 
 interface CycleData {
   card: {
@@ -74,12 +80,7 @@ export function CardDetailView({
   currency: string;
 }) {
   const router = useRouter();
-  const [card, setCard] = React.useState<CreditCardDetailDTO | null>(null);
-  const [cycle, setCycle] = React.useState<CycleData | null>(null);
-  const [cycleRows, setCycleRows] = React.useState<CreditCardCycleRowDTO[]>([]);
   const [period, setPeriod] = React.useState<CyclePeriod>("current");
-  const [loading, setLoading] = React.useState(true);
-  const [cycleLoading, setCycleLoading] = React.useState(true);
   const [editOpen, setEditOpen] = React.useState(false);
   const [payOpen, setPayOpen] = React.useState(false);
   const [markIssuedInitial, setMarkIssuedInitial] =
@@ -89,68 +90,43 @@ export function CardDetailView({
   const [order, setOrder] = React.useState<SortOrder>("desc");
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
 
-  const loadCard = React.useCallback(async () => {
-    const res = await fetch(`/api/credit-cards/${cardId}`);
-    if (res.status === 404) {
-      router.replace("/cards");
-      return;
-    }
-    const json = await res.json();
-    setCard(json.data);
-    setLoading(false);
-  }, [cardId, router]);
+  const cardReq = useSWR<ApiEnvelope<CreditCardDetailDTO>>(`/api/credit-cards/${cardId}`);
+  const historyReq = useSWR<ApiEnvelope<CreditCardCycleRowDTO[]>>(`/api/credit-cards/${cardId}/cycles`);
+  const cycleReq = useSWR<ApiEnvelope<CycleData>>(`/api/credit-cards/${cardId}/cycle?period=${period}`);
+  const card = cardReq.data?.data ?? null;
+  const cycleRows = historyReq.data?.data ?? NO_CYCLES;
+  const cycle = cycleReq.data?.data ?? null;
+  const cycleLoading = cycleReq.isLoading;
 
-  const loadCycleHistory = React.useCallback(async () => {
-    const res = await fetch(`/api/credit-cards/${cardId}/cycles`);
-    if (!res.ok) return;
-    const json = await res.json();
-    setCycleRows(json.data);
-  }, [cardId]);
+  // Unknown or someone else's card: back to the list.
+  React.useEffect(() => {
+    if (cardReq.error instanceof ApiError && cardReq.error.status === 404) router.replace("/cards");
+  }, [cardReq.error, router]);
 
-  const loadCycle = React.useCallback(async () => {
-    setCycleLoading(true);
-    const res = await fetch(`/api/credit-cards/${cardId}/cycle?period=${period}`);
-    if (!res.ok) {
-      setCycleLoading(false);
-      return;
-    }
-    const json = await res.json();
-    setCycle(json.data);
-    setCycleLoading(false);
+  // A different statement period means a different transaction list.
+  React.useEffect(() => {
     setSelected(new Set());
-  }, [cardId, period]);
-
-  React.useEffect(() => {
-    loadCard();
-  }, [loadCard]);
-
-  React.useEffect(() => {
-    loadCycle();
-  }, [loadCycle]);
-
-  React.useEffect(() => {
-    loadCycleHistory();
-  }, [loadCycleHistory]);
+  }, [period]);
 
   async function archive(): Promise<void> {
-    const res = await fetch(`/api/credit-cards/${cardId}`, { method: "DELETE" });
-    if (!res.ok) {
-      toast.error("Failed to archive card");
-      return;
+    try {
+      await apiFetch(`/api/credit-cards/${cardId}`, { method: "DELETE" });
+      toast.success("Card archived");
+      void revalidateAll();
+      router.push("/cards");
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to archive card"));
     }
-    toast.success("Card archived");
-    router.push("/cards");
   }
 
   async function unarchive() {
-    const res = await fetch(`/api/credit-cards/${cardId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: true }),
-    });
-    if (!res.ok) return toast.error("Failed to restore card");
-    toast.success("Card restored");
-    loadCard();
+    try {
+      await apiFetch(`/api/credit-cards/${cardId}`, jsonBody("PATCH", { isActive: true }));
+      toast.success("Card restored");
+      await revalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to restore card"));
+    }
   }
 
   function handleSort(k: SortKey) {
@@ -266,7 +242,10 @@ export function CardDetailView({
     return arr;
   }, [cycle, sort, order]);
 
-  if (loading || !card) {
+  if (cardReq.error && !card && !(cardReq.error instanceof ApiError && cardReq.error.status === 404)) {
+    return <ErrorState title="Couldn't load this card" onRetry={() => void cardReq.mutate()} />;
+  }
+  if (!card) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
@@ -373,7 +352,7 @@ export function CardDetailView({
                 {formatCurrencyAuto(Math.max(0, card.balance), currency)}
               </div>
               <div className="mt-3 space-y-1.5">
-                <Progress value={util} indicatorClassName={utilBar(util)} />
+                <Progress value={util} indicatorClassName={utilBar(util)} aria-label="Credit utilization" />
                 <div className="flex items-center justify-between text-[12px] font-[460] text-muted-foreground tabular-nums">
                   <span>{util.toFixed(0)}% utilization</span>
                   <span>{formatCurrency(card.creditLimit, currency)} limit</span>
@@ -506,8 +485,7 @@ export function CardDetailView({
               else setSelected(new Set());
             }}
             onDeleted={() => {
-              loadCycle();
-              loadCard();
+              void revalidateAll();
             }}
           />
         </div>
@@ -524,9 +502,7 @@ export function CardDetailView({
         onOpenChange={setEditOpen}
         initial={initialForForm}
         onSaved={() => {
-          loadCard();
-          loadCycle();
-          loadCycleHistory();
+          void revalidateAll();
         }}
       />
       <PayCardDialog
@@ -535,9 +511,7 @@ export function CardDetailView({
         currency={currency}
         presetCardId={cardId}
         onSaved={() => {
-          loadCard();
-          loadCycle();
-          loadCycleHistory();
+          void revalidateAll();
         }}
       />
       <MarkStatementIssuedDialog
@@ -547,8 +521,7 @@ export function CardDetailView({
         }}
         initial={markIssuedInitial}
         onSaved={() => {
-          loadCard();
-          loadCycleHistory();
+          void revalidateAll();
         }}
       />
       <ConfirmDialog

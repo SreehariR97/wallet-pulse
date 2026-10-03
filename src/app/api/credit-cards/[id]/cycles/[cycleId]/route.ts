@@ -2,8 +2,9 @@
  * PATCH /api/credit-cards/:id/cycles/:cycleId — "Mark statement issued":
  * promotes a projected cycle row into a locked/real one AND inserts the
  * next projected cycle so the detail view always has an upcoming row to
- * render. Two writes, atomic via the neon-batch / pg-transaction dispatch
- * (CLAUDE.md convention).
+ * render, then re-allocates payments (the issued cycle's dates may have
+ * moved). Atomic via the neon-batch / pg-transaction dispatch (CLAUDE.md
+ * convention), behind a lock on the card row.
  *
  * Invariants:
  *  - Cycle must be owned by the authed user AND match the :id card
@@ -13,6 +14,10 @@
  *  - Cycle must be isProjected=true. Real/locked cycles are historical
  *    artifacts; a future "correct this statement" flow (Phase 5 territory)
  *    will handle edits.
+ *  - A double-submit can't create two projected cycles: the second request
+ *    waits on the card lock, its UPDATE (guarded by is_projected) matches
+ *    nothing, and its INSERT hits the one-projected-cycle-per-card unique
+ *    index, so it rolls back and returns 409.
  */
 import { randomUUID } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -21,7 +26,9 @@ import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
 import { creditCards, creditCardCycles } from "@/lib/db/schema";
 import { markStatementIssuedSchema } from "@/lib/validations/credit-card";
-import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import { ok, fail, zodFail, requireUser, isUniqueViolation } from "@/lib/api";
+import { nextProjectedCycleDates } from "@/lib/credit-cards";
+import { lockCard, reallocateCardCycles } from "@/lib/credit-card-allocation";
 import type { CreditCardCycleRowDTO } from "@/types";
 
 export async function PATCH(
@@ -63,23 +70,12 @@ export async function PATCH(
     );
   }
 
-  // Compute the NEXT projected cycle. Close +30 days, due +(grace) to
-  // preserve whatever grace period the just-issued statement had.
-  const gracePeriodDays = Math.round(
-    (new Date(`${p.paymentDueDate}T00:00:00Z`).getTime() -
-      new Date(`${p.cycleCloseDate}T00:00:00Z`).getTime()) /
-      86400000,
-  );
-  const nextClose = new Date(`${p.cycleCloseDate}T00:00:00Z`);
-  nextClose.setUTCDate(nextClose.getUTCDate() + 30);
-  const nextDue = new Date(nextClose);
-  nextDue.setUTCDate(nextDue.getUTCDate() + gracePeriodDays);
+  // The NEXT projected cycle: close +30 days, same grace period.
   const nextCycleValues = {
     id: randomUUID(),
     cardId: existing.cardId,
     userId: auth.userId,
-    cycleCloseDate: nextClose.toISOString().slice(0, 10),
-    paymentDueDate: nextDue.toISOString().slice(0, 10),
+    ...nextProjectedCycleDates(p.cycleCloseDate, p.paymentDueDate),
     statementBalance: null,
     minimumPayment: null,
     isProjected: true,
@@ -96,33 +92,47 @@ export async function PATCH(
     updatedAt: sql`now()`,
   };
 
+  const stillProjected = and(
+    eq(creditCardCycles.id, existing.id),
+    eq(creditCardCycles.isProjected, true),
+  );
+
   try {
-    // Atomic pair: flip the projected row to real + insert next projected.
-    let issuedRow: typeof creditCardCycles.$inferSelect;
+    // Atomic: lock card, flip the projected row to real, insert the next
+    // projected row, re-allocate payments across the new dates.
+    let issuedRow: typeof creditCardCycles.$inferSelect | undefined;
     const maybeBatch = db as { batch?: unknown };
     if (typeof maybeBatch.batch === "function") {
       const neonDb = db as NeonHttpDatabase<typeof schema>;
-      const [issuedRows] = await neonDb.batch([
-        neonDb
-          .update(creditCardCycles)
-          .set(issuedUpdates)
-          .where(eq(creditCardCycles.id, existing.id))
-          .returning(),
+      const [, issuedRows] = await neonDb.batch([
+        lockCard(neonDb, existing.cardId),
+        neonDb.update(creditCardCycles).set(issuedUpdates).where(stillProjected).returning(),
         neonDb.insert(creditCardCycles).values(nextCycleValues),
+        reallocateCardCycles(neonDb, auth.userId, existing.cardId),
       ]);
       issuedRow = issuedRows[0];
     } else {
-      const result = await db.transaction(async (trx) => {
+      issuedRow = await db.transaction(async (trx) => {
+        await lockCard(trx, existing.cardId);
         const [row] = await trx
           .update(creditCardCycles)
           .set(issuedUpdates)
-          .where(eq(creditCardCycles.id, existing.id))
+          .where(stillProjected)
           .returning();
+        if (!row) return undefined;
         await trx.insert(creditCardCycles).values(nextCycleValues);
+        await reallocateCardCycles(trx, auth.userId, existing.cardId);
         return row;
       });
-      issuedRow = result;
     }
+    if (!issuedRow) return alreadyIssued();
+
+    // amount_paid on the returned row predates the re-allocation.
+    const [fresh] = await db
+      .select({ amountPaid: creditCardCycles.amountPaid })
+      .from(creditCardCycles)
+      .where(eq(creditCardCycles.id, issuedRow.id));
+    issuedRow = { ...issuedRow, amountPaid: fresh?.amountPaid ?? issuedRow.amountPaid };
 
     return ok({
       id: issuedRow.id,
@@ -139,6 +149,7 @@ export async function PATCH(
       updatedAt: issuedRow.updatedAt.toISOString(),
     } satisfies CreditCardCycleRowDTO);
   } catch (err) {
+    if (isUniqueViolation(err)) return alreadyIssued();
     console.error("[PATCH /api/credit-cards/:id/cycles/:cycleId] failed", {
       userId: auth.userId,
       cardId: existing.cardId,
@@ -149,7 +160,12 @@ export async function PATCH(
           ? { name: err.name, message: err.message, stack: err.stack }
           : err,
     });
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return fail(500, `Cycle update failed: ${message}`);
+    // Details are in the server log above; driver/constraint text stays
+    // out of the response.
+    return fail(500, "Cycle update failed. Please try again.");
   }
+}
+
+function alreadyIssued() {
+  return fail(409, "This statement was already marked as issued. Refresh to see the latest cycle.");
 }

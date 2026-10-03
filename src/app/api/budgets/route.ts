@@ -5,7 +5,7 @@ import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYea
 import { db } from "@/lib/db";
 import { budgets, categories, transactions } from "@/lib/db/schema";
 import { budgetCreateSchema } from "@/lib/validations/budget";
-import { ok, fail, zodFail, requireUser } from "@/lib/api";
+import { ok, fail, zodFail, requireUser, isUniqueViolation } from "@/lib/api";
 import type { BudgetDTO, BudgetListItemDTO } from "@/types";
 
 function toBudgetDTO(b: typeof budgets.$inferSelect): BudgetDTO {
@@ -55,7 +55,9 @@ export async function GET() {
       categoryColor: categories.color,
     })
     .from(budgets)
-    .leftJoin(categories, eq(budgets.categoryId, categories.id))
+    // Scope the join too, so a budget can never surface another user's
+    // category name/icon/color even if a foreign categoryId got stored.
+    .leftJoin(categories, and(eq(budgets.categoryId, categories.id), eq(categories.userId, auth.userId)))
     .where(eq(budgets.userId, auth.userId));
 
   const withSpent: BudgetListItemDTO[] = await Promise.all(
@@ -124,17 +126,25 @@ export async function POST(req: Request) {
   }
 
   const id = randomUUID();
-  const [row] = await db
-    .insert(budgets)
-    .values({
-      id,
-      userId: auth.userId,
-      categoryId: parsed.data.categoryId ?? null,
-      amount: String(parsed.data.amount),
-      period: parsed.data.period,
-      startDate: parsed.data.startDate,
-      endDate: parsed.data.endDate ?? null,
-    })
-    .returning();
+  let row: typeof budgets.$inferSelect;
+  try {
+    [row] = await db
+      .insert(budgets)
+      .values({
+        id,
+        userId: auth.userId,
+        categoryId: parsed.data.categoryId ?? null,
+        amount: String(parsed.data.amount),
+        period: parsed.data.period,
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate ?? null,
+      })
+      .returning();
+  } catch (err) {
+    // budgets_user_category_period_uniq: covers the overall (no-category)
+    // budget and a concurrent double-submit that both passed the check above.
+    if (isUniqueViolation(err)) return fail(409, "A budget for this category and period already exists");
+    throw err;
+  }
   return NextResponse.json({ data: toBudgetDTO(row) satisfies BudgetDTO }, { status: 201 });
 }

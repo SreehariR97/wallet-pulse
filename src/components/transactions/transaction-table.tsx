@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import * as React from "react";
-import { ArrowDown, ArrowUp, ChevronsUpDown, CreditCard, MoreHorizontal, Pencil, Trash2, Repeat } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, CreditCard, MoreHorizontal, Pencil, Trash2, Repeat, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { cn, formatCivilDate, formatCurrency, paymentMethodLabel, isInflow, isOutflow, isLoanType, transactionTypeLabel } from "@/lib/utils";
 import type { TransactionListItem, TxType } from "@/types";
+import { apiFetch, errorMessage } from "@/lib/api-client";
 
 function amountColorClass(type: TxType): string {
   if (type === "income" || type === "repayment_received") return "text-success";
@@ -49,8 +50,12 @@ export function TransactionTable({
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
 
   async function doDelete(id: string) {
-    const res = await fetch(`/api/transactions/${id}`, { method: "DELETE" });
-    if (!res.ok) return toast.error("Failed to delete transaction");
+    try {
+      await apiFetch(`/api/transactions/${id}`, { method: "DELETE" });
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to delete transaction"));
+      return;
+    }
     toast.success("Transaction deleted");
     onDeleted(id);
   }
@@ -110,6 +115,19 @@ export function TransactionTable({
                           <CreditCard className="h-3 w-3" />
                           {t.creditCardName}
                           {t.creditCardLast4 ? ` · ${t.creditCardLast4}` : ""}
+                        </span>
+                      )}
+                      {(t.accountName || t.transferAccountName) && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.06em] text-muted-foreground">
+                          <Landmark className="h-3 w-3" aria-hidden />
+                          {t.accountName}
+                          {t.transferAccountName && (
+                            <>
+                              <span aria-hidden>→</span>
+                              <span className="sr-only">{t.accountName ? "to" : "into"}</span>
+                              {t.transferAccountName}
+                            </>
+                          )}
                         </span>
                       )}
                       {t.tags &&
@@ -200,14 +218,17 @@ function SortableTh({
 }) {
   const Icon = active ? (order === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
   return (
-    <th className={cn("px-3 py-3", align === "right" && "text-right")}>
+    <th
+      className={cn("px-3 py-3", align === "right" && "text-right")}
+      aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"}
+    >
       <button
         type="button"
         onClick={onClick}
         className={cn("inline-flex items-center gap-1 transition-colors hover:text-foreground", active && "text-foreground")}
       >
         {children}
-        <Icon className="h-3 w-3" />
+        <Icon className="h-3 w-3" aria-hidden />
       </button>
     </th>
   );

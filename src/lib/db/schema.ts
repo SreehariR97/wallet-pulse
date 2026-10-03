@@ -5,10 +5,13 @@ import {
   boolean,
   date,
   doublePrecision,
+  integer,
   numeric,
   timestamp,
   index,
   uniqueIndex,
+  unique,
+  check,
 } from "drizzle-orm/pg-core";
 
 const now = sql`now()`;
@@ -21,9 +24,41 @@ export const users = pgTable("users", {
   currency: text("currency").notNull().default("USD"),
   monthlyBudget: numeric("monthly_budget", { precision: 14, scale: 2 }),
   theme: text("theme").notNull().default("dark"),
+  // Copied into the JWT at sign-in and re-checked on every server-side
+  // auth() call (see src/lib/auth.ts). Bumping it revokes every session
+  // issued before the bump — password change does this.
+  sessionVersion: integer("session_version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
 });
+
+// Bank and cash accounts: where money actually sits. Transactions name the
+// account money left or arrived in (`account_id`); a transfer with
+// `transfer_account_id` moves money between two of the user's accounts.
+// Balance = opening_balance + signed transactions (see src/lib/accounts.ts).
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: text("type").$type<"checking" | "savings" | "cash" | "wallet" | "other">().notNull().default("checking"),
+    institution: text("institution"),
+    last4: text("last4"),
+    openingBalance: numeric("opening_balance", { precision: 14, scale: 2 }).notNull().default("0"),
+    isActive: boolean("is_active").notNull().default(true),
+    sortOrder: doublePrecision("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
+  },
+  (t) => ({
+    userIdx: index("accounts_user_idx").on(t.userId),
+    nameUniq: uniqueIndex("accounts_user_name_uniq").on(t.userId, sql`lower(${t.name})`),
+    typeCheck: check("accounts_type_check", sql`${t.type} IN ('checking', 'savings', 'cash', 'wallet', 'other')`),
+  })
+);
 
 export const categories = pgTable(
   "categories",
@@ -46,6 +81,12 @@ export const categories = pgTable(
   },
   (t) => ({
     userIdx: index("categories_user_idx").on(t.userId),
+    // One copy of each seeded default per user, so the GET backfill can't
+    // race itself into duplicates. User-created categories may share names.
+    defaultNameUniq: uniqueIndex("categories_user_default_name_uniq")
+      .on(t.userId, t.type, sql`lower(${t.name})`)
+      .where(sql`${t.isDefault}`),
+    typeCheck: check("categories_type_check", sql`${t.type} IN ('expense', 'income', 'loan', 'transfer')`),
   })
 );
 
@@ -87,6 +128,12 @@ export const transactions = pgTable(
     creditCardId: text("credit_card_id").references(() => creditCards.id, {
       onDelete: "set null",
     }),
+    // The bank/cash account the money left (outflows, transfers) or arrived
+    // in (income, loans taken, repayments received). Null on card-paid
+    // expenses — those reach an account when the card is paid.
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    // Destination of a transfer between two of the user's own accounts.
+    transferAccountId: text("transfer_account_id").references(() => accounts.id, { onDelete: "set null" }),
     isRecurring: boolean("is_recurring").notNull().default(false),
     recurringFrequency: text("recurring_frequency").$type<
       "daily" | "weekly" | "monthly" | "yearly"
@@ -101,6 +148,25 @@ export const transactions = pgTable(
     userCategoryIdx: index("tx_user_category_idx").on(t.userId, t.categoryId),
     userTypeIdx: index("tx_user_type_idx").on(t.userId, t.type),
     userCardIdx: index("tx_user_card_idx").on(t.userId, t.creditCardId),
+    // Leading-column indexes for the FKs, so deleting a category or card
+    // doesn't scan every transaction.
+    categoryIdx: index("tx_category_idx").on(t.categoryId),
+    cardIdx: index("tx_card_idx").on(t.creditCardId),
+    accountIdx: index("tx_user_account_idx").on(t.userId, t.accountId),
+    transferAccountIdx: index("tx_transfer_account_idx").on(t.transferAccountId),
+    // An account-to-account move is a transfer to a different account, and
+    // a card payment (credit_card_id) can't also be one. The API also
+    // requires a source account_id; the CHECK tolerates a NULL there so the
+    // ON DELETE SET NULL on account_id (e.g. a user-delete cascade) can run.
+    transferAccountCheck: check(
+      "transactions_transfer_account_check",
+      sql`${t.transferAccountId} IS NULL OR (${t.type} = 'transfer' AND ${t.creditCardId} IS NULL AND (${t.accountId} IS NULL OR ${t.accountId} <> ${t.transferAccountId}))`,
+    ),
+    amountCheck: check("transactions_amount_positive", sql`${t.amount} > 0`),
+    typeCheck: check(
+      "transactions_type_check",
+      sql`${t.type} IN ('expense', 'income', 'transfer', 'loan_given', 'loan_taken', 'repayment_received', 'repayment_made')`,
+    ),
   })
 );
 
@@ -121,6 +187,14 @@ export const budgets = pgTable(
   },
   (t) => ({
     userIdx: index("budgets_user_idx").on(t.userId),
+    categoryIdx: index("budgets_category_idx").on(t.categoryId),
+    // One budget per category and period; NULLS NOT DISTINCT makes this
+    // cover the overall (category-less) budget too.
+    categoryPeriodUniq: unique("budgets_user_category_period_uniq")
+      .on(t.userId, t.categoryId, t.period)
+      .nullsNotDistinct(),
+    amountCheck: check("budgets_amount_positive", sql`${t.amount} > 0`),
+    periodCheck: check("budgets_period_check", sql`${t.period} IN ('weekly', 'monthly', 'yearly')`),
   })
 );
 
@@ -240,8 +314,55 @@ export const creditCardCycles = pgTable(
     userIdx: index("ccc_user_idx").on(t.userId),
     // Speeds up "find the next upcoming cycle for this card" — common read.
     cardDueIdx: index("ccc_card_due_idx").on(t.cardId, t.paymentDueDate),
+    // Invariants: one statement per close date, and exactly one projected
+    // (currently accruing) cycle per card.
+    cardCloseUniq: uniqueIndex("ccc_card_close_uniq").on(t.cardId, t.cycleCloseDate),
+    oneProjectedUniq: uniqueIndex("ccc_one_projected_per_card").on(t.cardId).where(sql`${t.isProjected}`),
   })
 );
 
 export type CreditCardCycle = typeof creditCardCycles.$inferSelect;
 export type NewCreditCardCycle = typeof creditCardCycles.$inferInsert;
+
+// Fixed-window counters for auth endpoints (login, register, password
+// change). Lives in Postgres so limits hold across serverless instances
+// without extra infrastructure. See src/lib/rate-limit.ts.
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull().default(now),
+});
+
+export type Account = typeof accounts.$inferSelect;
+
+/**
+ * A statement check: on `statement_date` the bank said the account held
+ * `statement_balance`; WalletPulse computed `computed_balance`. When they
+ * differed and the user chose to fix it, `adjustment_transaction_id` is the
+ * "Balance Adjustment" transfer that closed the gap (SET NULL if it's later
+ * deleted). Rows are an append-only history.
+ */
+export const accountReconciliations = pgTable(
+  "account_reconciliations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    statementDate: date("statement_date", { mode: "string" }).notNull(),
+    statementBalance: numeric("statement_balance", { precision: 14, scale: 2 }).notNull(),
+    computedBalance: numeric("computed_balance", { precision: 14, scale: 2 }).notNull(),
+    adjustmentTransactionId: text("adjustment_transaction_id").references(() => transactions.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+  },
+  (t) => ({
+    accountDateIdx: index("acct_recon_account_date_idx").on(t.accountId, t.statementDate),
+    userIdx: index("acct_recon_user_idx").on(t.userId),
+  })
+);
+export type AccountReconciliation = typeof accountReconciliations.$inferSelect;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { newPasswordField } from "./auth";
 
 export const profileUpdateSchema = z.object({
   name: z.string().min(2).max(64).optional(),
@@ -14,7 +15,7 @@ export const profileUpdateSchema = z.object({
 
 export const passwordUpdateSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
-  newPassword: z.string().min(6, "New password must be at least 6 characters").max(128),
+  newPassword: newPasswordField("New password"),
 });
 
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;

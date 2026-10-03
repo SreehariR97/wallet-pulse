@@ -1,14 +1,17 @@
 import { z } from "zod";
+import { isoDate } from "@/lib/validations/common";
 import { and, eq, gte, lte, sql, desc } from "drizzle-orm";
 import { format, startOfMonth } from "date-fns";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
 import { ok, zodFail, requireUser } from "@/lib/api";
 import type { AnalyticsPaymentMethodDTO } from "@/types";
+import { analyticsScopeSchema, flowPredicates } from "@/lib/analytics-flows";
 
 const querySchema = z.object({
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  from: isoDate().optional(),
+  to: isoDate().optional(),
+  ...analyticsScopeSchema,
 });
 
 export async function GET(req: Request) {
@@ -31,7 +34,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(transactions.userId, auth.userId),
-        eq(transactions.type, "expense"),
+        flowPredicates(parsed.data.view, parsed.data.accountId).outflow,
         gte(transactions.date, fromDate),
         lte(transactions.date, toDate)
       )

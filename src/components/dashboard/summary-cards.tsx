@@ -14,6 +14,16 @@ export interface SummaryData {
 export function SummaryCards({ data, currency, loading }: { data: SummaryData | null; currency: string; loading: boolean }) {
   const net = data?.net ?? 0;
   const netPositive = net >= 0;
+  const noActivity = !!data && data.income === 0 && data.expense === 0;
+  const netSentence = !data
+    ? "Loading your balance for the selected range."
+    : noActivity
+      ? "No income or expenses recorded this period."
+      : net === 0
+        ? "Income and expenses balanced out this period."
+        : netPositive
+          ? "Income exceeded expenses this period."
+          : "Expenses exceeded income this period.";
   const secondary: Array<{
     label: string;
     value: string;
@@ -67,12 +77,14 @@ export function SummaryCards({ data, currency, loading }: { data: SummaryData | 
         <CardContent className="flex h-full flex-col justify-between p-6">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">Net balance</span>
-            <span className={cn(
-              "inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-[700] tracking-[-0.005em]",
-              netPositive ? "bg-accent text-accent-foreground" : "bg-destructive/15 text-destructive"
-            )}>
-              {netPositive ? "Net +" : "Net −"}
-            </span>
+            {!noActivity && (
+              <span className={cn(
+                "inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-[700] tracking-[-0.005em]",
+                netPositive ? "bg-accent text-accent-foreground" : "bg-destructive/15 text-destructive"
+              )}>
+                {netPositive ? "Net +" : "Net −"}
+              </span>
+            )}
           </div>
           {loading ? (
             <Skeleton className="mt-4 h-14 w-48" />
@@ -85,11 +97,7 @@ export function SummaryCards({ data, currency, loading }: { data: SummaryData | 
             </div>
           )}
           <div className="mt-3 text-[13px] font-[460] leading-[1.4] text-muted-foreground">
-            {data
-              ? netPositive
-                ? "Income exceeded expenses this period."
-                : "Expenses exceeded income this period."
-              : "Loading your balance for the selected range."}
+            {netSentence}
           </div>
         </CardContent>
       </Card>

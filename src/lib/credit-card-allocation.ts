@@ -1,23 +1,32 @@
 /**
- * Phase 4 — cycle allocation DB layer.
+ * Cycle allocation DB layer.
  *
- * Splits cleanly from `credit-cards.ts` (pure date math) so the pure side
- * stays DB-free and testable in isolation. This module owns:
- *   - Computing per-cycle amountPaid totals (pure helper).
- *   - Computing the minimal diff against the DB's current totals (pure).
- *   - Full recompute of a card's cycle rows from scratch (DB-touching).
+ * Allocation rule: see `allocateCycleForPayment` in `credit-cards.ts`. The
+ * pure `computeCycleAmountsPaid` below is the reference implementation;
+ * `reallocateCardCycles` is the same rule as one SQL UPDATE, which is what
+ * every write path persists with (a test pins the two together).
  *
- * Allocation rule: see `allocateCycleForPayment` in `credit-cards.ts`. This
- * module is the single caller responsible for persisting the result.
+ * Why SQL instead of read-compute-write in JS: two concurrent payments that
+ * each read a snapshot, add their own amount and write back would lose one
+ * update. Every writer instead runs, in one atomic batch/transaction:
+ *
+ *   lockCard → (its own writes) → reallocateCardCycles
+ *
+ * The lock serializes writers per card, and because Postgres takes a fresh
+ * snapshot per statement under READ COMMITTED, the UPDATE that runs after
+ * the lock sees every payment committed before it.
  */
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "@/lib/db/schema";
-import { creditCardCycles, transactions } from "@/lib/db/schema";
+import { creditCards, creditCardCycles } from "@/lib/db/schema";
 import { allocateCycleForPayment } from "@/lib/credit-cards";
 import { db as defaultDb } from "@/lib/db";
 
 type DB = typeof defaultDb;
+/** A db handle or an open transaction — anything that builds pg queries. */
+export type QueryBuilder = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 /** Cycle rows ordered ASC by close date — allocation relies on that order. */
 export interface CycleSlim {
@@ -31,12 +40,6 @@ export interface PaymentSlim {
   date: string;
   /** Positive. A payment reduces the balance. */
   amount: number;
-}
-
-export interface CycleAmountDiff {
-  cycleId: string;
-  /** New amountPaid total to persist, formatted as numeric(14,2) string. */
-  newAmountStr: string;
 }
 
 /**
@@ -64,139 +67,67 @@ export function computeCycleAmountsPaid(
 }
 
 /**
- * Pure: compare computed totals against the current DB snapshot and return
- * a minimal diff list. Skips cycles where the delta is smaller than half a
- * cent — dodges floating-point noise on repeated recomputes.
+ * `SELECT ... FOR UPDATE` on the card row. Put it first in any atomic unit
+ * that writes payments or cycles for the card.
  */
-export function diffCycleAmounts(
-  cycles: Array<CycleSlim & { amountPaid: number }>,
-  perCycle: Map<string, number>,
-): CycleAmountDiff[] {
-  const diffs: CycleAmountDiff[] = [];
-  for (const c of cycles) {
-    const next = perCycle.get(c.id) ?? 0;
-    if (Math.abs(next - c.amountPaid) < 0.005) continue;
-    diffs.push({ cycleId: c.id, newAmountStr: next.toFixed(2) });
-  }
-  return diffs;
+export function lockCard(q: QueryBuilder, cardId: string) {
+  return q.select({ id: creditCards.id }).from(creditCards).where(eq(creditCards.id, cardId)).for("update");
 }
 
 /**
- * Fetch this card's cycles (ASC by close) + all card-scoped transfer
- * transactions for the user. Used by both the recompute path and the pay
- * route — the pay route synthesizes its about-to-insert payment on top.
+ * Re-derive amount_paid for every cycle of the card from its transfer
+ * transactions, in one statement. SQL port of `allocateCycleForPayment`: a
+ * payment on date D counts toward cycle c when D is in (c.close, c.due] and
+ * no earlier-closing cycle of the card also contains D. Rows whose total is
+ * already right are left untouched.
  */
-export async function loadAllocationState(
-  db: DB,
-  userId: string,
-  cardId: string,
-): Promise<{
-  cycles: Array<CycleSlim & { amountPaid: number }>;
-  payments: PaymentSlim[];
-}> {
-  const [cycleRows, paymentRows] = await Promise.all([
-    db
-      .select({
-        id: creditCardCycles.id,
-        cycleCloseDate: creditCardCycles.cycleCloseDate,
-        paymentDueDate: creditCardCycles.paymentDueDate,
-        amountPaid: creditCardCycles.amountPaid,
-      })
-      .from(creditCardCycles)
-      .where(
-        and(
-          eq(creditCardCycles.cardId, cardId),
-          eq(creditCardCycles.userId, userId),
-        ),
+export function reallocateCardCycles(q: QueryBuilder, userId: string, cardId: string) {
+  const allocated = sql`COALESCE((
+    SELECT SUM(t.amount) FROM transactions t
+    WHERE t.user_id = credit_card_cycles.user_id
+      AND t.credit_card_id = credit_card_cycles.card_id
+      AND t.type = 'transfer'
+      AND t.date > credit_card_cycles.cycle_close_date
+      AND t.date <= credit_card_cycles.payment_due_date
+      AND NOT EXISTS (
+        SELECT 1 FROM credit_card_cycles c2
+        WHERE c2.card_id = credit_card_cycles.card_id
+          AND c2.cycle_close_date < credit_card_cycles.cycle_close_date
+          AND t.date > c2.cycle_close_date
+          AND t.date <= c2.payment_due_date
       )
-      .orderBy(asc(creditCardCycles.cycleCloseDate)),
-    db
-      .select({
-        date: transactions.date,
-        amount: transactions.amount,
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.userId, userId),
-          eq(transactions.creditCardId, cardId),
-          eq(transactions.type, "transfer"),
-        ),
+  ), 0)`;
+  return q
+    .update(creditCardCycles)
+    .set({ amountPaid: allocated, updatedAt: sql`now()` })
+    .where(
+      and(
+        eq(creditCardCycles.cardId, cardId),
+        eq(creditCardCycles.userId, userId),
+        sql`${creditCardCycles.amountPaid} IS DISTINCT FROM ${allocated}`,
       ),
-  ]);
-
-  return {
-    cycles: cycleRows.map((r) => ({
-      id: r.id,
-      cycleCloseDate: r.cycleCloseDate,
-      paymentDueDate: r.paymentDueDate,
-      amountPaid: Number(r.amountPaid),
-    })),
-    payments: paymentRows.map((r) => ({
-      date: r.date,
-      amount: Number(r.amount),
-    })),
-  };
+    );
 }
 
 /**
- * Full recompute: re-derive amountPaid for every cycle of `cardId` from
- * existing transfer transactions, and persist. Atomic via the
- * batch / transaction dispatch (CLAUDE.md convention). A no-op if nothing
- * changed.
- *
- * Call this after any write that could affect allocation:
- *   - Editing a transfer tx (date / amount / creditCardId change).
- *   - Deleting a transfer tx.
- *   - Inserting a transfer tx via the generic /api/transactions POST.
- *
- * The pay route does NOT call this — it composes its own atomic batch
- * that includes both the INSERT and the per-cycle updates together, so
- * the post-state is visible in one round-trip.
+ * Self-healing full recompute of a card's amount_paid totals. Call after
+ * any write that could affect allocation (editing, inserting or deleting a
+ * transfer on the card) that isn't already part of an atomic unit ending
+ * in `reallocateCardCycles`.
  */
 export async function recomputeCardCycleAllocations(
   db: DB,
   userId: string,
   cardId: string,
 ): Promise<void> {
-  const { cycles, payments } = await loadAllocationState(db, userId, cardId);
-  if (cycles.length === 0) return;
-  const { perCycle, unallocated } = computeCycleAmountsPaid(cycles, payments);
-  const diffs = diffCycleAmounts(cycles, perCycle);
-
-  if (diffs.length === 0) {
-    if (unallocated > 0) warnUnallocated(userId, cardId, unallocated);
-    return;
-  }
-
   const maybeBatch = db as { batch?: unknown };
   if (typeof maybeBatch.batch === "function") {
     const neonDb = db as NeonHttpDatabase<typeof schema>;
-    const queries = diffs.map((d) =>
-      neonDb
-        .update(creditCardCycles)
-        .set({ amountPaid: d.newAmountStr, updatedAt: sql`now()` })
-        .where(eq(creditCardCycles.id, d.cycleId)),
-    );
-    await neonDb.batch(queries as [(typeof queries)[number], ...typeof queries]);
+    await neonDb.batch([lockCard(neonDb, cardId), reallocateCardCycles(neonDb, userId, cardId)]);
   } else {
     await db.transaction(async (trx) => {
-      for (const d of diffs) {
-        await trx
-          .update(creditCardCycles)
-          .set({ amountPaid: d.newAmountStr, updatedAt: sql`now()` })
-          .where(eq(creditCardCycles.id, d.cycleId));
-      }
+      await lockCard(trx, cardId);
+      await reallocateCardCycles(trx, userId, cardId);
     });
   }
-
-  if (unallocated > 0) warnUnallocated(userId, cardId, unallocated);
-}
-
-function warnUnallocated(userId: string, cardId: string, unallocated: number) {
-  console.warn("[recomputeCardCycleAllocations] payments not allocated", {
-    userId,
-    cardId,
-    unallocated,
-  });
 }

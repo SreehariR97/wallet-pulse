@@ -1,7 +1,8 @@
 "use client";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatCurrency, paymentMethodLabel } from "@/lib/utils";
-import { CHART_PALETTE, TOOLTIP_BG, TOOLTIP_BORDER } from "./palette";
+import { CHART_PALETTE, TOOLTIP_BG,
+  TOOLTIP_ITEM_STYLE, TOOLTIP_BORDER } from "./palette";
 
 export interface PaymentMethodSlice {
   paymentMethod: string;
@@ -16,24 +17,28 @@ export function PaymentDonut({ data, currency }: { data: PaymentMethodSlice[]; c
   const total = data.reduce((s, d) => s + d.total, 0);
   return (
     <div className="grid gap-4 md:grid-cols-[1fr_1fr] md:items-center">
-      <ResponsiveContainer width="100%" height={220}>
-        <PieChart>
-          <Pie data={data} dataKey="total" nameKey="paymentMethod" innerRadius={50} outerRadius={85} paddingAngle={2} stroke="transparent">
-            {data.map((d, i) => (
-              <Cell key={d.paymentMethod} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              background: TOOLTIP_BG,
-              border: `1px solid ${TOOLTIP_BORDER}`,
-              borderRadius: "0.75rem",
-              fontSize: 12,
-            }}
-            formatter={(v: number, n) => [formatCurrency(v, currency), paymentMethodLabel(String(n))]}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+      {/* The legend list beside the chart carries the same data as text. */}
+      <div aria-hidden>
+        <ResponsiveContainer width="100%" height={220}>
+          <PieChart>
+            <Pie data={data} dataKey="total" nameKey="paymentMethod" innerRadius={50} outerRadius={85} paddingAngle={2} stroke="transparent" rootTabIndex={-1}>
+              {data.map((d, i) => (
+                <Cell key={d.paymentMethod} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              itemStyle={TOOLTIP_ITEM_STYLE}
+              contentStyle={{
+                background: TOOLTIP_BG,
+                border: `1px solid ${TOOLTIP_BORDER}`,
+                borderRadius: "0.75rem",
+                fontSize: 12,
+              }}
+              formatter={(v: number, n) => [formatCurrency(v, currency), paymentMethodLabel(String(n))]}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
       <ul className="space-y-2 text-sm">
         {data.map((d, i) => {
           const pct = total ? (d.total / total) * 100 : 0;

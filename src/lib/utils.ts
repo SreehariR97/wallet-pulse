@@ -6,29 +6,70 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * The locale whose number conventions fit a currency's users, in English so
+ * the UI language stays consistent: INR gets lakh/crore grouping
+ * (₹1,00,000.00, ₹1Cr), CAD/AUD show a plain "$" like their symbol in
+ * CURRENCIES. Anything unlisted formats as en-US.
+ */
+const CURRENCY_LOCALES: Record<string, string> = {
+  INR: "en-IN",
+  GBP: "en-GB",
+  EUR: "en-IE",
+  CAD: "en-CA",
+  AUD: "en-AU",
+};
+
+export function localeForCurrency(currency: string): string {
+  return CURRENCY_LOCALES[currency] ?? "en-US";
+}
+
+// Constructing Intl.NumberFormat is far more expensive than calling it, and
+// a dashboard formats hundreds of amounts per render.
+const formatters = new Map<string, Intl.NumberFormat>();
+function cachedFormat(currency: string, kind: "currency" | "compact" | "number"): Intl.NumberFormat {
+  const key = `${currency}|${kind}`;
+  let f = formatters.get(key);
+  if (!f) {
+    const locale = localeForCurrency(currency);
+    f =
+      kind === "currency"
+        ? // Let Intl pick the per-currency default precision: 2dp for
+          // USD/EUR/GBP/INR, 0dp for JPY/KRW/VND, 3dp for BHD/KWD. Hardcoding
+          // 2 caused "¥10.00" bugs.
+          new Intl.NumberFormat(locale, { style: "currency", currency })
+        : kind === "compact"
+          ? // maximumFractionDigits:1 caps the "$1.2K" decimal.
+            // minimumFractionDigits:0 is required too: newer ICU builds
+            // (Node 22.22+) keep the currency's default minimum in compact
+            // mode, which turns "$10M" into "$10.0M".
+            new Intl.NumberFormat(locale, {
+              style: "currency",
+              currency,
+              notation: "compact",
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 1,
+            })
+          : new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    formatters.set(key, f);
+  }
+  return f;
+}
+
 export function formatCurrency(amount: number, currency = "USD", signed = false): string {
-  const abs = Math.abs(amount);
-  // Let Intl pick the per-currency default precision: 2dp for USD/EUR/GBP/INR,
-  // 0dp for JPY/KRW/VND, 3dp for BHD/KWD. Hardcoding 2 caused "¥10.00" bugs.
-  const formatted = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-  }).format(abs);
+  const formatted = cachedFormat(currency, "currency").format(Math.abs(amount));
   if (!signed) return formatted;
   if (amount === 0) return formatted;
   return amount > 0 ? `+${formatted}` : `-${formatted}`;
 }
 
 export function formatCompactCurrency(amount: number, currency = "USD"): string {
-  // maximumFractionDigits:1 caps the "$1.2K" decimal in compact mode.
-  // We deliberately don't set a minimum — Intl already suppresses trailing
-  // zeros for zero-decimal currencies (JPY → "¥10M", not "¥10.0M").
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(amount);
+  return cachedFormat(currency, "compact").format(amount);
+}
+
+/** A plain 2-decimal number grouped the way `currency`'s users expect (no symbol). */
+export function formatAmountFor(amount: number, currency: string): string {
+  return cachedFormat(currency, "number").format(amount);
 }
 
 /**
@@ -50,6 +91,19 @@ export function formatCurrencyAuto(
   const compact = formatCompactCurrency(Math.abs(amount), currency);
   if (!signed || amount === 0) return compact;
   return amount > 0 ? `+${compact}` : `-${compact}`;
+}
+
+/**
+ * A post-login redirect target from the query string, or the dashboard.
+ * Only same-origin paths are allowed: "//evil.com" and absolute URLs would
+ * make the login page an open redirect.
+ */
+export function safeCallbackPath(raw: unknown): string {
+  if (typeof raw !== "string" || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
+    return "/dashboard";
+  }
+  if (raw === "/login" || raw.startsWith("/login?") || raw === "/register") return "/dashboard";
+  return raw;
 }
 
 export function formatPercent(value: number): string {

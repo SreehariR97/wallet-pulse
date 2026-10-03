@@ -17,9 +17,12 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartCard } from "@/components/charts/chart-container";
+import { BudgetChart } from "@/components/charts/lazy";
 import { useCategories } from "@/stores/categories";
-import { cn, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
-import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { cn, currencySymbol, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
+import useSWR from "swr";
+import { ErrorState } from "@/components/shared/error-state";
+import { apiFetch, errorMessage, jsonBody, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 
 interface BudgetRow {
   id: string;
@@ -43,39 +46,27 @@ function barColor(pct: number) {
   return "bg-success";
 }
 
-function colorHex(pct: number) {
-  if (pct >= 100) return "hsl(0 55% 55%)";
-  if (pct >= 80) return "hsl(35 65% 52%)";
-  if (pct >= 50) return "hsl(258 80% 72%)";
-  return "hsl(150 35% 48%)";
-}
-
 export function BudgetsView({ currency }: { currency: string }) {
   const { items: categories, fetch: fetchCats, loaded } = useCategories();
-  const [rows, setRows] = React.useState<BudgetRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const budgets = useSWR<ApiEnvelope<BudgetRow[]>>("/api/budgets");
+  const rows = budgets.data?.data ?? [];
+  const loading = budgets.isLoading;
   const [editing, setEditing] = React.useState<BudgetRow | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<BudgetRow | null>(null);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    const res = await fetch("/api/budgets");
-    const json = await res.json();
-    setRows(json.data ?? []);
-    setLoading(false);
-  }, []);
-
   React.useEffect(() => {
-    load();
     if (!loaded) fetchCats();
-  }, [load, loaded, fetchCats]);
+  }, [loaded, fetchCats]);
 
   async function onDelete(b: BudgetRow) {
-    const res = await fetch(`/api/budgets/${b.id}`, { method: "DELETE" });
-    if (!res.ok) return toast.error("Failed to delete budget");
-    toast.success("Budget deleted");
-    load();
+    try {
+      await apiFetch(`/api/budgets/${b.id}`, { method: "DELETE" });
+      toast.success("Budget deleted");
+      await revalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to delete budget"));
+    }
   }
 
   const overBudget = rows.filter((r) => r.amount > 0 && r.spent > r.amount);
@@ -109,7 +100,9 @@ export function BudgetsView({ currency }: { currency: string }) {
         </div>
       )}
 
-      {loading ? (
+      {budgets.error && !budgets.data ? (
+        <ErrorState title="Couldn't load budgets" onRetry={() => void budgets.mutate()} />
+      ) : loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-40 w-full" />
@@ -167,7 +160,7 @@ export function BudgetsView({ currency }: { currency: string }) {
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="ghost">
+                          <Button size="icon" variant="ghost" aria-label={`Actions for ${b.categoryName ?? "overall"} budget`}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -203,7 +196,12 @@ export function BudgetsView({ currency }: { currency: string }) {
                           of {formatCurrencyAuto(b.amount, currency)}
                         </span>
                       </div>
-                      <Progress value={clamped} className="mt-3" indicatorClassName={cn(color, pct >= 100 && "animate-pulse")} />
+                      <Progress
+                        value={clamped}
+                        className="mt-3"
+                        indicatorClassName={cn(color, pct >= 100 && "animate-pulse")}
+                        aria-label={`${b.categoryName ?? "Overall"} budget used`}
+                      />
                       <div className="mt-2 flex justify-between gap-2 text-[11px] font-[500] text-muted-foreground">
                         <span className="tabular-nums">{pct.toFixed(0)}% used</span>
                         <span
@@ -231,53 +229,10 @@ export function BudgetsView({ currency }: { currency: string }) {
           </div>
 
           <ChartCard title="Budget vs actual" description="Where you stand this period">
-            <ResponsiveContainer width="100%" height={Math.max(260, rows.length * 44)}>
-              <BarChart
-                data={rows.map((r) => ({
-                  name: r.categoryName ?? "Overall",
-                  budget: r.amount,
-                  spent: r.spent,
-                  pct: r.amount > 0 ? (r.spent / r.amount) * 100 : 0,
-                }))}
-                layout="vertical"
-                margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                <XAxis
-                  type="number"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => formatCurrency(v, currency)}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  tick={{ fill: "hsl(var(--foreground))", fontSize: 12 }}
-                  width={120}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "0.75rem",
-                    fontSize: 12,
-                  }}
-                  formatter={(v: number, n: string) => [formatCurrency(v, currency), n === "budget" ? "Budget" : "Spent"]}
-                  cursor={{ fill: "hsl(var(--muted))", opacity: 0.6 }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                <Bar dataKey="budget" fill="hsl(27 11% 78%)" radius={[0, 6, 6, 0]} />
-                <Bar dataKey="spent" fill="hsl(258 80% 72%)" radius={[0, 6, 6, 0]}>
-                  {rows.map((r, i) => {
-                    const pct = r.amount > 0 ? (r.spent / r.amount) * 100 : 0;
-                    return <Cell key={i} fill={colorHex(pct)} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <BudgetChart
+              rows={rows.map((r) => ({ name: r.categoryName ?? "Overall", amount: r.amount, spent: r.spent }))}
+              currency={currency}
+            />
           </ChartCard>
         </>
       )}
@@ -287,7 +242,8 @@ export function BudgetsView({ currency }: { currency: string }) {
         onOpenChange={setDialogOpen}
         initial={editing}
         categories={categories}
-        onSaved={load}
+        currency={currency}
+        onSaved={() => void revalidateAll()}
       />
 
       <ConfirmDialog
@@ -310,12 +266,14 @@ function BudgetDialog({
   onOpenChange,
   initial,
   categories,
+  currency,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   initial: BudgetRow | null;
   categories: Array<{ id: string; name: string; icon: string; type: "expense" | "income" | "loan" | "transfer" }>;
+  currency: string;
   onSaved: () => void;
 }) {
   const [categoryId, setCategoryId] = React.useState<string>(OVERALL_VALUE);
@@ -342,19 +300,16 @@ function BudgetDialog({
       period,
       startDate,
     };
-    const res = await fetch(initial ? `/api/budgets/${initial.id}` : "/api/budgets", {
-      method: initial ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setPending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to save budget");
+    try {
+      await apiFetch(initial ? `/api/budgets/${initial.id}` : "/api/budgets", jsonBody(initial ? "PUT" : "POST", payload));
+      toast.success(initial ? "Budget updated" : "Budget created");
+      onOpenChange(false);
+      onSaved();
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to save budget"));
+    } finally {
+      setPending(false);
     }
-    toast.success(initial ? "Budget updated" : "Budget created");
-    onOpenChange(false);
-    onSaved();
   }
 
   const expenseCategories = categories.filter((c) => c.type === "expense");
@@ -367,9 +322,9 @@ function BudgetDialog({
         </DialogHeader>
         <form onSubmit={save} className="space-y-4">
           <div className="grid gap-1.5">
-            <Label>Scope</Label>
+            <Label htmlFor="budget-scope">Scope</Label>
             <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger>
+              <SelectTrigger id="budget-scope">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -387,12 +342,16 @@ function BudgetDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>Amount</Label>
+              <Label htmlFor="budget-amount">Amount</Label>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                  $
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                >
+                  {currencySymbol(currency)}
                 </span>
                 <Input
+                  id="budget-amount"
                   type="number"
                   step="0.01"
                   min="0"
@@ -401,14 +360,14 @@ function BudgetDialog({
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="500"
-                  className="pl-7"
+                  className={currencySymbol(currency).length > 1 ? "pl-12" : "pl-7"}
                 />
               </div>
             </div>
             <div className="grid gap-1.5">
-              <Label>Period</Label>
+              <Label htmlFor="budget-period">Period</Label>
               <Select value={period} onValueChange={(v) => setPeriod(v as typeof period)}>
-                <SelectTrigger>
+                <SelectTrigger id="budget-period">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -420,8 +379,8 @@ function BudgetDialog({
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label>Start date</Label>
-            <Input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <Label htmlFor="budget-start">Start date</Label>
+            <Input id="budget-start" type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

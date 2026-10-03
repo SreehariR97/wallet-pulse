@@ -1,14 +1,16 @@
 import { z } from "zod";
-import { and, eq, gte, lte, sql, desc } from "drizzle-orm";
+import { isoDate } from "@/lib/validations/common";
+import { and, eq, gte, lte, or, sql, desc } from "drizzle-orm";
 import { format, startOfMonth } from "date-fns";
 import { db } from "@/lib/db";
 import { transactions, categories } from "@/lib/db/schema";
 import { ok, zodFail, requireUser } from "@/lib/api";
 import type { AnalyticsCategoryBreakdownDTO } from "@/types";
+import { analyticsScopeSchema, flowPredicates } from "@/lib/analytics-flows";
 
 const querySchema = z.object({
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  from: isoDate().optional(),
+  to: isoDate().optional(),
   type: z
     .enum([
       "expense",
@@ -20,6 +22,7 @@ const querySchema = z.object({
       "repayment_made",
     ])
     .default("expense"),
+  ...analyticsScopeSchema,
 });
 
 export async function GET(req: Request) {
@@ -29,7 +32,22 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
   if (!parsed.success) return zodFail(parsed.error);
-  const { from, to, type } = parsed.data;
+  const { from, to, type, view, accountId } = parsed.data;
+  // "expense" and "income" mean the view's outflow and inflow (in cash-flow
+  // view, outflows include card payments and remittances by category);
+  // other types are filtered literally, narrowed to the account if given.
+  const flow = flowPredicates(view, accountId);
+  const typeFilter =
+    type === "expense"
+      ? flow.outflow
+      : type === "income"
+        ? flow.inflow
+        : and(
+            eq(transactions.type, type),
+            accountId
+              ? or(eq(transactions.accountId, accountId), eq(transactions.transferAccountId, accountId))
+              : undefined,
+          );
   const fromDate = from ?? format(startOfMonth(new Date()), "yyyy-MM-dd");
   const toDate = to ?? format(new Date(), "yyyy-MM-dd");
 
@@ -47,7 +65,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(transactions.userId, auth.userId),
-        eq(transactions.type, type),
+        typeFilter,
         gte(transactions.date, fromDate),
         lte(transactions.date, toDate)
       )

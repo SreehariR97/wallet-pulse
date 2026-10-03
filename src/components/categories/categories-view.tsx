@@ -4,7 +4,6 @@ import { Plus, Pencil, Trash2, Tags, Loader2, MoreHorizontal } from "lucide-reac
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -16,12 +15,14 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCategories } from "@/stores/categories";
+import { apiFetch, errorMessage, jsonBody, revalidateAll } from "@/lib/api-client";
+import { formatCurrency } from "@/lib/utils";
 import type { CategoryDTO, CategoryType } from "@/types";
 
 const COMMON_ICONS = ["📦", "🛒", "🏠", "🍽️", "🚗", "⚡", "🎬", "🏥", "🛍️", "📚", "📱", "✈️", "💇", "🎁", "🛡️", "💰", "💻", "📈", "🎓", "🐾", "☕", "🎵", "🤝", "🏦"];
 const SWATCHES = ["#6366F1", "#22C55E", "#EF4444", "#F97316", "#EC4899", "#EAB308", "#14B8A6", "#06B6D4", "#D946EF", "#0EA5E9", "#F43F5E", "#10B981", "#A855F7", "#FB923C"];
 
-export function CategoriesView() {
+export function CategoriesView({ currency }: { currency: string }) {
   const { items, loading, loaded, fetch: fetchCategories, upsert, remove } = useCategories();
   const [tab, setTab] = React.useState<CategoryType>("expense");
   const [editing, setEditing] = React.useState<CategoryDTO | null>(null);
@@ -48,14 +49,17 @@ export function CategoriesView() {
 
   async function deleteCategory(c: CategoryDTO) {
     setDeletePending(true);
-    const res = await fetch(`/api/categories/${c.id}`, { method: "DELETE" });
-    setDeletePending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to delete category");
+    try {
+      await apiFetch(`/api/categories/${c.id}`, { method: "DELETE" });
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to delete category"));
+      return;
+    } finally {
+      setDeletePending(false);
     }
     remove(c.id);
     toast.success("Category deleted");
+    void revalidateAll();
   }
 
   return (
@@ -119,12 +123,17 @@ export function CategoriesView() {
                             )}
                           </div>
                           {c.budgetLimit != null && (
-                            <div className="mt-0.5 text-[12px] font-[460] text-muted-foreground">Budget: {Number(c.budgetLimit).toFixed(2)}</div>
+                            <div className="mt-0.5 text-[12px] font-[460] text-muted-foreground">Budget: {formatCurrency(Number(c.budgetLimit), currency)}</div>
                           )}
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" className="opacity-60 group-hover:opacity-100">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label={`Actions for ${c.name}`}
+                              className="opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
+                            >
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -210,19 +219,23 @@ function CategoryDialog({
       type,
       budgetLimit: budgetLimit ? Number(budgetLimit) : null,
     };
-    const res = await fetch(initial ? `/api/categories/${initial.id}` : "/api/categories", {
-      method: initial ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setPending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to save category");
+    let saved: CategoryDTO;
+    try {
+      saved = (
+        await apiFetch<CategoryDTO>(
+          initial ? `/api/categories/${initial.id}` : "/api/categories",
+          jsonBody(initial ? "PUT" : "POST", payload),
+        )
+      ).data;
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to save category"));
+      return;
+    } finally {
+      setPending(false);
     }
-    const { data } = await res.json();
     toast.success(initial ? "Category updated" : "Category created");
-    onSaved(data as CategoryDTO);
+    onSaved(saved);
+    void revalidateAll();
   }
 
   return (
@@ -233,13 +246,13 @@ function CategoryDialog({
         </DialogHeader>
         <form onSubmit={save} className="space-y-4">
           <div className="grid gap-1.5">
-            <Label>Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={50} placeholder="Groceries" />
+            <Label htmlFor="category-name">Name</Label>
+            <Input id="category-name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={50} placeholder="Groceries" />
           </div>
           <div className="grid gap-1.5">
-            <Label>Type</Label>
+            <Label htmlFor="category-type">Type</Label>
             <Select value={type} onValueChange={(v) => setType(v as CategoryType)}>
-              <SelectTrigger>
+              <SelectTrigger id="category-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -250,12 +263,20 @@ function CategoryDialog({
             </Select>
           </div>
           <div className="grid gap-1.5">
-            <Label>Icon</Label>
-            <div className="grid max-h-32 grid-cols-11 gap-1 overflow-y-auto rounded-lg border border-input bg-muted p-2">
+            <Label id="category-icon-label">Icon</Label>
+            {/* 11 fixed 32px columns overflowed a 375px-wide dialog; let it wrap. */}
+            <div
+              role="radiogroup"
+              aria-labelledby="category-icon-label"
+              className="grid max-h-32 grid-cols-[repeat(auto-fill,minmax(2rem,1fr))] gap-1 overflow-y-auto rounded-lg border border-input bg-muted p-2"
+            >
               {COMMON_ICONS.map((e) => (
                 <button
                   key={e}
                   type="button"
+                  role="radio"
+                  aria-checked={icon === e}
+                  aria-label={e}
                   onClick={() => setIcon(e)}
                   className={`flex h-8 w-8 items-center justify-center rounded-lg text-lg transition-colors ${icon === e ? "bg-accent ring-1 ring-foreground/30" : "hover:bg-secondary"}`}
                 >
@@ -263,15 +284,17 @@ function CategoryDialog({
                 </button>
               ))}
             </div>
-            <Input value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={4} className="w-20" />
+            <Input aria-label="Custom icon" value={icon} onChange={(e) => setIcon(e.target.value)} maxLength={4} className="w-20" />
           </div>
           <div className="grid gap-1.5">
-            <Label>Color</Label>
-            <div className="flex flex-wrap gap-2">
+            <Label id="category-color-label">Color</Label>
+            <div role="radiogroup" aria-labelledby="category-color-label" className="flex flex-wrap gap-2">
               {SWATCHES.map((c) => (
                 <button
                   key={c}
                   type="button"
+                  role="radio"
+                  aria-checked={color === c}
                   onClick={() => setColor(c)}
                   className={`h-7 w-7 rounded-full transition-transform ${color === c ? "ring-2 ring-offset-2 ring-offset-card ring-foreground scale-110" : ""}`}
                   style={{ backgroundColor: c }}
@@ -279,11 +302,11 @@ function CategoryDialog({
                 />
               ))}
             </div>
-            <Input value={color} onChange={(e) => setColor(e.target.value)} className="w-28 font-mono text-xs" />
+            <Input aria-label="Custom color (hex)" value={color} onChange={(e) => setColor(e.target.value)} className="w-28 font-mono text-xs" />
           </div>
           <div className="grid gap-1.5">
-            <Label>Monthly budget (optional)</Label>
-            <Input type="number" step="0.01" min="0" max="99999999999.99" value={budgetLimit} onChange={(e) => setBudgetLimit(e.target.value)} placeholder="e.g. 500" />
+            <Label htmlFor="category-budget">Monthly budget (optional)</Label>
+            <Input id="category-budget" type="number" step="0.01" min="0" max="99999999999.99" value={budgetLimit} onChange={(e) => setBudgetLimit(e.target.value)} placeholder="e.g. 500" />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { Loader2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,23 +31,35 @@ export function ConfirmDialog({
   destructive?: boolean;
   onConfirm: () => void | Promise<void>;
 }) {
+  // While onConfirm runs, both buttons are disabled and the dialog can't be
+  // dismissed: a double click used to send the DELETE twice.
+  const [pending, setPending] = React.useState(false);
+
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={(o) => !pending && onOpenChange(o)}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             className={destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
+            disabled={pending}
             onClick={async (e) => {
               e.preventDefault();
-              await onConfirm();
-              onOpenChange(false);
+              if (pending) return;
+              setPending(true);
+              try {
+                await onConfirm();
+              } finally {
+                setPending(false);
+                onOpenChange(false);
+              }
             }}
           >
+            {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
             {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>

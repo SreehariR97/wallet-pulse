@@ -14,6 +14,58 @@ Things to run after a schema-changing PR lands in production. Not
 technical debt — these are real steps, kept here so they don't get lost
 in a long README.
 
+### Account reconciliation (migration 0011)
+
+Apply with 0010 (`pnpm db:migrate` runs both, in order) **before**
+deploying — the accounts list reads `account_reconciliations`. Additive
+only: the new table and a "Balance Adjustment" category for every existing
+user (`ON CONFLICT DO NOTHING`).
+
+### Accounts (migration 0010)
+
+Apply after 0009 (`pnpm db:migrate` runs them in order), **before**
+deploying this code — every transaction query now reads
+`transactions.account_id`. Additive only: a new `accounts` table, two
+nullable columns on `transactions`, and an "Account Transfer" category
+inserted for every existing user (`ON CONFLICT DO NOTHING`, so safe on
+users who already have one). No existing row changes; transactions stay
+unassigned until a user creates an account and opts to adopt them.
+
+### Data integrity (migration 0009)
+
+Apply after 0008 (`pnpm db:migrate` runs both, in order). Needs Postgres
+15+ (`UNIQUE NULLS NOT DISTINCT`) — Neon is 16/17. Before adding its
+constraints the migration repairs existing rows, which changes data:
+
+- **Duplicate default categories** (same user, type and name, both
+  `is_default`) are merged into the oldest copy; their transactions and
+  budgets are repointed first. User-created categories are untouched.
+- **Duplicate budgets** for the same user, category and period (including
+  several category-less "overall" budgets) keep only the most recently
+  edited one; the others are **deleted**.
+- **Credit-card cycles:** rows duplicating a card's close date are deleted
+  (an issued row wins over a projected one); projected rows that aren't
+  the card's newest cycle become issued; a card whose newest cycle is
+  issued gets a projected cycle 30 days later; every `amount_paid` is
+  recomputed from transactions.
+
+To preview what the budget clean-up would delete in production, run this first:
+
+```sql
+SELECT user_id, category_id, period, count(*)
+FROM budgets GROUP BY 1, 2, 3 HAVING count(*) > 1;
+```
+
+### Auth hardening (migration 0008)
+
+**Order matters: run `DATABASE_URL=... pnpm db:migrate` BEFORE deploying
+this code.** The new code reads `users.session_version` on every `auth()`
+call, so deploying first would fail every authenticated request until the
+migration runs. The migration is additive (new `rate_limits` table, new
+column with default 0), so the currently deployed code keeps working
+after it's applied. Existing sessions stay valid (tokens without a
+version are treated as version 0).
+
 ### credit-cards + remittances feature
 
 _Resolved — migration 0001 applied, `scripts/backfill-transfer-categories.ts`
@@ -33,22 +85,6 @@ through `credit_card_cycles`._
 
 ## Credit cards + remittances
 
-### Cash-flow view toggle
-
-The stage-2 plan intentionally deferred this. Analytics queries today
-sum `type IN ('income','expense')` only — the "real spending view" where
-credit-card spend counts as an expense regardless of when the card is
-paid. A "cash flow" view would instead count card *repayments* (transfer
-transactions with a `creditCardId`) and remittances (transfer
-transactions with a remittance row) as outflows, while excluding card
-*expenses* (they don't leave the bank account until the card is paid).
-
-Implement as a toggle in the analytics filter bar. Server-side: either a
-new `?view=cashflow` param that switches the CASE expressions, or a
-dedicated endpoint (`/api/analytics/cashflow-summary` etc.). UI copy
-should explain the difference inline so users know what they're
-looking at.
-
 ### Snapshot card balances on statement close
 
 _Partially resolved by Phases 3–4: `credit_card_cycles` now stores
@@ -66,15 +102,21 @@ instant `is_projected` flips false, separately from the user-entered
 `statement_balance`, so we can surface "we computed $X from your
 transactions; you told us the statement said $Y" diagnostics.
 
-### Multiple accounts as first-class entities
+### Accounts: remaining polish
 
-Implied by the cash-flow toggle but bigger: right now "my cash account"
-is an implicit singleton (everything not tagged to a card is "cash").
-Real users have checking + savings + multiple debit cards. Model these
-as a `bank_accounts` table with the same shape as `credit_cards` but
-without cycle fields. Transactions gain an optional `bankAccountId`.
-Card repayments then become real transfers between two first-class
-accounts instead of "money disappears from cash, card balance shrinks."
+Accounts, the cash-flow view and reconciliation shipped (see CLAUDE.md
+"Accounts and cash flow"). Left out to keep that PR tight:
+
+- **Reconciled transactions aren't locked:** editing one dated on or
+  before a reconciliation is allowed; the account just shows as out of
+  sync afterwards. A per-transaction "cleared/reconciled" flag (YNAB
+  style) would allow warning before the edit.
+- **Card payments as account-to-card transfers in the UI:** the pay
+  dialog records "Paid from", but the card detail page doesn't show
+  which account paid each cycle.
+- **Multi-currency accounts:** every account is in the user's currency,
+  like transactions. A EUR account for a USD user needs FX conversion
+  first (separate follow-up).
 
 ### FX rate auto-fetch
 
@@ -158,10 +200,6 @@ rewritten this way during the redesign as a template, and the new
 [/cards/[id]](src/components/credit-cards/card-detail-view.tsx), and
 [/remittances](src/components/remittances/remittances-view.tsx) empty
 states all match it.
-
-### Drop unused `Badge` import
-
-[categories-view.tsx:7](src/components/categories/categories-view.tsx) — the "default" indicator was demoted from a `Badge` to a plain caption span during the redesign, but the `Badge` import was left in to comply with the "no unrelated cleanup" rule. Trivial delete, zero risk.
 
 ### Chart/data visibility for sparse periods
 
