@@ -26,6 +26,11 @@ export const transactionCreateSchema = z
     // cross-field rule is enforced via superRefine below. Server routes
     // separately re-verify that the card belongs to the authed user.
     creditCardId: z.string().optional().nullable(),
+    // Bank/cash account the money left or arrived in, and for a transfer
+    // between the user's own accounts, the destination. Ownership and the
+    // cross-field rules are checked by validateAccountLinks in the route.
+    accountId: z.string().max(64).optional().nullable(),
+    transferAccountId: z.string().max(64).optional().nullable(),
     isRecurring: z.boolean().default(false),
     recurringFrequency: recurringFrequencyEnum.optional().nullable(),
     tags: z.string().max(500).optional().nullable(),
@@ -54,6 +59,8 @@ export const transactionUpdateSchema = z
     date: isoDate().optional(),
     paymentMethod: paymentMethodEnum.optional(),
     creditCardId: z.string().optional().nullable(),
+    accountId: z.string().max(64).optional().nullable(),
+    transferAccountId: z.string().max(64).optional().nullable(),
     isRecurring: z.boolean().optional(),
     recurringFrequency: recurringFrequencyEnum.optional().nullable(),
     tags: z.string().max(500).optional().nullable(),
@@ -92,6 +99,8 @@ export const transactionQuerySchema = z.object({
   // Filter by attached credit card. Pass "none" to filter for transactions
   // without a card; pass a card id to filter for that specific card.
   creditCardId: z.string().optional(),
+  // Transactions touching this account: as source or as transfer destination.
+  accountId: z.string().max(64).optional(),
   // Shortcut filters that combine type=transfer with the relevant FK check.
   // "card_payments" → type=transfer AND creditCardId IS NOT NULL.
   // "remittances"   → type=transfer AND a remittance row exists for the tx.

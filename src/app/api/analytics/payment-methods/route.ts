@@ -6,10 +6,12 @@ import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
 import { ok, zodFail, requireUser } from "@/lib/api";
 import type { AnalyticsPaymentMethodDTO } from "@/types";
+import { analyticsScopeSchema, flowPredicates } from "@/lib/analytics-flows";
 
 const querySchema = z.object({
   from: isoDate().optional(),
   to: isoDate().optional(),
+  ...analyticsScopeSchema,
 });
 
 export async function GET(req: Request) {
@@ -32,7 +34,7 @@ export async function GET(req: Request) {
     .where(
       and(
         eq(transactions.userId, auth.userId),
-        eq(transactions.type, "expense"),
+        flowPredicates(parsed.data.view, parsed.data.accountId).outflow,
         gte(transactions.date, fromDate),
         lte(transactions.date, toDate)
       )

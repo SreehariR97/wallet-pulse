@@ -26,6 +26,7 @@ export type PaymentMethod = "cash" | "credit_card" | "debit_card" | "bank_transf
 export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly";
 export type RemittanceService = "wise" | "remitly" | "western_union" | "bank_wire" | "other";
 export type BudgetPeriod = "weekly" | "monthly" | "yearly";
+export type AccountType = "checking" | "savings" | "cash" | "wallet" | "other";
 
 // ── Envelopes ────────────────────────────────────────────────────────
 
@@ -83,6 +84,11 @@ export interface TransactionListItem {
   creditCardId?: string | null;
   creditCardName?: string | null;
   creditCardLast4?: string | null;
+  // Account fields — optional for the same reason as the card fields.
+  accountId?: string | null;
+  accountName?: string | null;
+  transferAccountId?: string | null;
+  transferAccountName?: string | null;
   createdAt: string;
 }
 
@@ -99,12 +105,35 @@ export interface TransactionDTO {
   date: string;
   paymentMethod: PaymentMethod;
   creditCardId: string | null;
+  accountId: string | null;
+  transferAccountId: string | null;
   isRecurring: boolean;
   recurringFrequency: RecurringFrequency | null;
   tags: string | null;
   receiptUrl: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ── Accounts ─────────────────────────────────────────────────────────
+
+export interface AccountDTO {
+  id: string;
+  name: string;
+  type: AccountType;
+  institution: string | null;
+  last4: string | null;
+  openingBalance: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** List shape: the account plus its live balance. */
+export interface AccountListItemDTO extends AccountDTO {
+  balance: number;
+  transactionCount: number;
 }
 
 // ── Budgets ──────────────────────────────────────────────────────────
@@ -259,6 +288,8 @@ export interface RemittanceDTO {
   notes: string | null;
   date: string;
   paymentMethod: PaymentMethod;
+  /** Account the money was sent from. */
+  accountId: string | null;
 }
 
 /** Detail/PATCH response includes tx-side recurrence + tags + owning userId
@@ -330,6 +361,8 @@ export interface TransactionExportRowDTO {
   isRecurring: boolean;
   recurringFrequency: RecurringFrequency | null;
   tags: string | null;
+  account: string | null;
+  transferToAccount: string | null;
 }
 
 export interface ExportJsonDTO {
@@ -337,6 +370,7 @@ export interface ExportJsonDTO {
   transactions: TransactionExportRowDTO[];
   categories: CategoryDTO[];
   budgets: BudgetDTO[];
+  accounts: AccountDTO[];
 }
 
 // ── User ─────────────────────────────────────────────────────────────

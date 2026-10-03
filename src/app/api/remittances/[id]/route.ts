@@ -6,6 +6,7 @@ import { remittances, transactions } from "@/lib/db/schema";
 import { remittanceUpdateSchema } from "@/lib/validations/remittance";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import type { RemittanceDetailDTO, HardDeletedIdDTO } from "@/types";
+import { validateAccountLinks } from "@/lib/accounts";
 
 type TransactionPatch = Partial<
   Omit<typeof transactions.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">
@@ -34,6 +35,7 @@ function toDetailDTO(row: LoadedRow): RemittanceDetailDTO {
     notes: row.notes,
     date: row.date,
     paymentMethod: row.paymentMethod,
+    accountId: row.accountId,
     isRecurring: row.isRecurring,
     recurringFrequency: row.recurringFrequency,
     tags: row.tags,
@@ -59,6 +61,7 @@ async function loadOwned(userId: string, id: string) {
       notes: transactions.notes,
       date: transactions.date,
       paymentMethod: transactions.paymentMethod,
+      accountId: transactions.accountId,
       isRecurring: transactions.isRecurring,
       recurringFrequency: transactions.recurringFrequency,
       tags: transactions.tags,
@@ -104,6 +107,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (p.recurringFrequency !== undefined) txSet.recurringFrequency = p.recurringFrequency;
   if (p.tags !== undefined) txSet.tags = p.tags;
   if (p.fromCurrency !== undefined) txSet.currency = p.fromCurrency;
+  if (p.accountId !== undefined) {
+    const accountError = await validateAccountLinks(
+      auth.userId,
+      { type: "transfer", creditCardId: null, accountId: p.accountId, transferAccountId: null },
+      { accountId: existing.accountId, transferAccountId: null },
+    );
+    if (accountError) return fail(400, accountError);
+    txSet.accountId = p.accountId;
+  }
 
   const remitSet: RemittancePatch = {};
   if (p.fromCurrency !== undefined) remitSet.fromCurrency = p.fromCurrency;

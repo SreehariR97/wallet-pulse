@@ -41,6 +41,8 @@ export const remittanceCreateSchema = z.object({
     .max(99999999.9999, "Fee exceeds maximum value"),
   service: remittanceServiceEnum,
   recipientNote: z.string().max(200).optional().nullable(),
+  // Account the money is sent from (optional).
+  accountId: z.string().max(64).optional().nullable(),
 });
 
 export const remittanceUpdateSchema = remittanceCreateSchema.partial();

@@ -19,6 +19,7 @@ import {
 import { TRANSFER_CATEGORY_NAMES } from "@/lib/db/defaults";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import type { RemittanceDTO } from "@/types";
+import { validateAccountLinks } from "@/lib/accounts";
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -69,6 +70,7 @@ export async function GET(req: Request) {
       notes: transactions.notes,
       date: transactions.date,
       paymentMethod: transactions.paymentMethod,
+      accountId: transactions.accountId,
     })
     .from(remittances)
     .innerJoin(transactions, eq(remittances.transactionId, transactions.id))
@@ -96,6 +98,7 @@ export async function GET(req: Request) {
     notes: r.notes,
     date: r.date,
     paymentMethod: r.paymentMethod,
+    accountId: r.accountId,
   }));
   return ok(items satisfies RemittanceDTO[], { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) });
 }
@@ -130,6 +133,14 @@ export async function POST(req: Request) {
     );
   }
 
+  const accountError = await validateAccountLinks(auth.userId, {
+    type: "transfer",
+    creditCardId: null,
+    accountId: r.accountId ?? null,
+    transferAccountId: null,
+  });
+  if (accountError) return fail(400, accountError);
+
   const txId = randomUUID();
   const remitId = randomUUID();
 
@@ -144,6 +155,7 @@ export async function POST(req: Request) {
     notes: r.notes ?? null,
     date: r.date,
     paymentMethod: r.paymentMethod,
+    accountId: r.accountId ?? null,
     isRecurring: r.isRecurring,
     recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
     tags: r.tags ?? null,
@@ -203,6 +215,7 @@ export async function POST(req: Request) {
         notes: tx.notes,
         date: tx.date,
         paymentMethod: tx.paymentMethod,
+        accountId: tx.accountId,
       } satisfies RemittanceDTO,
       { created: true },
     );

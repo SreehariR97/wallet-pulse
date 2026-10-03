@@ -32,6 +32,34 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
 });
 
+// Bank and cash accounts: where money actually sits. Transactions name the
+// account money left or arrived in (`account_id`); a transfer with
+// `transfer_account_id` moves money between two of the user's accounts.
+// Balance = opening_balance + signed transactions (see src/lib/accounts.ts).
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: text("type").$type<"checking" | "savings" | "cash" | "wallet" | "other">().notNull().default("checking"),
+    institution: text("institution"),
+    last4: text("last4"),
+    openingBalance: numeric("opening_balance", { precision: 14, scale: 2 }).notNull().default("0"),
+    isActive: boolean("is_active").notNull().default(true),
+    sortOrder: doublePrecision("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
+  },
+  (t) => ({
+    userIdx: index("accounts_user_idx").on(t.userId),
+    nameUniq: uniqueIndex("accounts_user_name_uniq").on(t.userId, sql`lower(${t.name})`),
+    typeCheck: check("accounts_type_check", sql`${t.type} IN ('checking', 'savings', 'cash', 'wallet', 'other')`),
+  })
+);
+
 export const categories = pgTable(
   "categories",
   {
@@ -100,6 +128,12 @@ export const transactions = pgTable(
     creditCardId: text("credit_card_id").references(() => creditCards.id, {
       onDelete: "set null",
     }),
+    // The bank/cash account the money left (outflows, transfers) or arrived
+    // in (income, loans taken, repayments received). Null on card-paid
+    // expenses — those reach an account when the card is paid.
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    // Destination of a transfer between two of the user's own accounts.
+    transferAccountId: text("transfer_account_id").references(() => accounts.id, { onDelete: "set null" }),
     isRecurring: boolean("is_recurring").notNull().default(false),
     recurringFrequency: text("recurring_frequency").$type<
       "daily" | "weekly" | "monthly" | "yearly"
@@ -118,6 +152,16 @@ export const transactions = pgTable(
     // doesn't scan every transaction.
     categoryIdx: index("tx_category_idx").on(t.categoryId),
     cardIdx: index("tx_card_idx").on(t.creditCardId),
+    accountIdx: index("tx_user_account_idx").on(t.userId, t.accountId),
+    transferAccountIdx: index("tx_transfer_account_idx").on(t.transferAccountId),
+    // An account-to-account move is a transfer to a different account, and
+    // a card payment (credit_card_id) can't also be one. The API also
+    // requires a source account_id; the CHECK tolerates a NULL there so the
+    // ON DELETE SET NULL on account_id (e.g. a user-delete cascade) can run.
+    transferAccountCheck: check(
+      "transactions_transfer_account_check",
+      sql`${t.transferAccountId} IS NULL OR (${t.type} = 'transfer' AND ${t.creditCardId} IS NULL AND (${t.accountId} IS NULL OR ${t.accountId} <> ${t.transferAccountId}))`,
+    ),
     amountCheck: check("transactions_amount_positive", sql`${t.amount} > 0`),
     typeCheck: check(
       "transactions_type_check",
@@ -288,3 +332,5 @@ export const rateLimits = pgTable("rate_limits", {
   count: integer("count").notNull(),
   windowStart: timestamp("window_start", { withTimezone: true }).notNull().default(now),
 });
+
+export type Account = typeof accounts.$inferSelect;

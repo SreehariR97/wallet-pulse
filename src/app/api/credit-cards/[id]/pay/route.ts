@@ -22,28 +22,9 @@ import { TRANSFER_CATEGORY_NAMES } from "@/lib/db/defaults";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { lockCard, reallocateCardCycles } from "@/lib/credit-card-allocation";
 import type { TransactionDTO } from "@/types";
+import { toTransactionDTO } from "@/lib/dto";
+import { validateAccountLinks } from "@/lib/accounts";
 
-function toTransactionDTO(t: typeof transactions.$inferSelect): TransactionDTO {
-  return {
-    id: t.id,
-    userId: t.userId,
-    categoryId: t.categoryId,
-    type: t.type,
-    amount: Number(t.amount),
-    currency: t.currency,
-    description: t.description,
-    notes: t.notes,
-    date: t.date,
-    paymentMethod: t.paymentMethod,
-    creditCardId: t.creditCardId,
-    isRecurring: t.isRecurring,
-    recurringFrequency: t.recurringFrequency,
-    tags: t.tags,
-    receiptUrl: t.receiptUrl,
-    createdAt: t.createdAt.toISOString(),
-    updatedAt: t.updatedAt.toISOString(),
-  };
-}
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireUser();
@@ -79,6 +60,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
+  const accountError = await validateAccountLinks(auth.userId, {
+    type: "transfer",
+    creditCardId: card.id,
+    accountId: p.accountId ?? null,
+    transferAccountId: null,
+  });
+  if (accountError) return fail(400, accountError);
+
   const id = randomUUID();
   const insertValues = {
     id,
@@ -92,6 +81,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     date: p.date,
     paymentMethod: "bank_transfer" as const,
     creditCardId: card.id,
+    accountId: p.accountId ?? null,
   };
 
   try {

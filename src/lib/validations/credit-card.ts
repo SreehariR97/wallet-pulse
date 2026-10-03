@@ -95,6 +95,8 @@ export const creditCardPaySchema = z.object({
   amount: moneyAmount(),
   date: isoDate("Invalid date"),
   notes: z.string().max(2000).optional().nullable(),
+  // Account the payment comes from (optional).
+  accountId: z.string().max(64).optional().nullable(),
 });
 
 export const cycleQuerySchema = z.object({

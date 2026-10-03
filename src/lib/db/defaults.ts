@@ -29,9 +29,11 @@ export const DEFAULT_CATEGORIES: Array<{
   // Names are load-bearing: the backfill script + API helpers look these up by name.
   { name: "Credit Card Payment", icon: "💳", color: "#A78BFA", type: "transfer" },
   { name: "International Transfer", icon: "🌐", color: "#A78BFA", type: "transfer" },
+  { name: "Account Transfer", icon: "🔁", color: "#A78BFA", type: "transfer" },
 ];
 
 export const TRANSFER_CATEGORY_NAMES = {
   creditCardPayment: "Credit Card Payment",
   internationalTransfer: "International Transfer",
+  accountTransfer: "Account Transfer",
 } as const;

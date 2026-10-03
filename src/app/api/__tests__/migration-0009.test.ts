@@ -88,7 +88,11 @@ describe("migration 0009 repair", () => {
   it("merges duplicate default categories and repoints their transactions", async () => {
     const cats = await db.select({ id: schema.categories.id }).from(schema.categories).orderBy(asc(schema.categories.id));
     expect(cats.map((c) => c.id)).toEqual(["cat-groc-1", "cat-misc-1", "cat-misc-2"]);
-    const [tx] = await db.select().from(schema.transactions).where(eq(schema.transactions.id, "tx-on-dupe"));
+    // Explicit columns: this DB is at 0009 and lacks columns later migrations add.
+    const [tx] = await db
+      .select({ categoryId: schema.transactions.categoryId })
+      .from(schema.transactions)
+      .where(eq(schema.transactions.id, "tx-on-dupe"));
     expect(tx!.categoryId).toBe("cat-groc-1");
   });
 

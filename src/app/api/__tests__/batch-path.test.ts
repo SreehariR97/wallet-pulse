@@ -218,6 +218,7 @@ describe("db.batch path (neon-http shape)", () => {
     const cats = await currentDb.select().from(schema.categories).where(eq(schema.categories.userId, userId));
     expect(cats.length).toBeGreaterThanOrEqual(20);
     expect(cats.filter((c) => c.type === "transfer").map((c) => c.name).sort()).toEqual([
+      "Account Transfer",
       "Credit Card Payment",
       "International Transfer",
     ]);
