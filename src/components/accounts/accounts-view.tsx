@@ -14,6 +14,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { AccountListItemDTO } from "@/types";
 import { AccountForm } from "./account-form";
 import { AccountTile } from "./account-tile";
+import { ReconcileDialog } from "./reconcile-dialog";
 
 export function AccountsView({ currency }: { currency: string }) {
   const list = useAccounts();
@@ -24,6 +25,7 @@ export function AccountsView({ currency }: { currency: string }) {
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<AccountListItemDTO | null>(null);
   const [confirmArchive, setConfirmArchive] = React.useState<AccountListItemDTO | null>(null);
+  const [reconciling, setReconciling] = React.useState<AccountListItemDTO | null>(null);
 
   function openNew() {
     setEditing(null);
@@ -99,7 +101,14 @@ export function AccountsView({ currency }: { currency: string }) {
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {active.map((a) => (
-              <AccountTile key={a.id} account={a} currency={currency} onEdit={openEdit} onArchive={setConfirmArchive} />
+              <AccountTile
+                key={a.id}
+                account={a}
+                currency={currency}
+                onEdit={openEdit}
+                onArchive={setConfirmArchive}
+                onReconcile={setReconciling}
+              />
             ))}
           </div>
 
@@ -138,6 +147,12 @@ export function AccountsView({ currency }: { currency: string }) {
         onOpenChange={setFormOpen}
         initial={editing}
         isFirst={list.all.length === 0}
+        onSaved={() => void revalidateAll()}
+      />
+      <ReconcileDialog
+        account={reconciling}
+        currency={currency}
+        onOpenChange={(o) => !o && setReconciling(null)}
         onSaved={() => void revalidateAll()}
       />
       <ConfirmDialog

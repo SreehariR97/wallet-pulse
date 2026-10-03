@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
 import { ACCOUNT_TYPE_LABELS } from "@/components/accounts/account-form";
@@ -32,7 +33,16 @@ export function AccountsWidget({ accounts, currency }: { accounts: AccountListIt
           >
             <Card className="transition-colors group-hover:border-accent/50">
               <CardContent className="p-4">
-                <div className="truncate text-[13px] font-[540] leading-[1.1] tracking-[-0.01em]">{a.name}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-[13px] font-[540] leading-[1.1] tracking-[-0.01em]">{a.name}</span>
+                  {a.reconciliation && !a.reconciliation.inSync && (
+                    <AlertTriangle
+                      className="h-3.5 w-3.5 shrink-0 text-warning"
+                      role="img"
+                      aria-label="Doesn't match the last statement"
+                    />
+                  )}
+                </div>
                 <div className="mt-0.5 truncate text-[11px] font-[460] text-muted-foreground">
                   {ACCOUNT_TYPE_LABELS[a.type]}
                   {a.institution ? ` · ${a.institution}` : ""}

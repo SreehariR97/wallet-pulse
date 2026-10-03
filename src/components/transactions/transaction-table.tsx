@@ -120,11 +120,11 @@ export function TransactionTable({
                       {(t.accountName || t.transferAccountName) && (
                         <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.06em] text-muted-foreground">
                           <Landmark className="h-3 w-3" aria-hidden />
-                          {t.accountName ?? "—"}
+                          {t.accountName}
                           {t.transferAccountName && (
                             <>
                               <span aria-hidden>→</span>
-                              <span className="sr-only">to</span>
+                              <span className="sr-only">{t.accountName ? "to" : "into"}</span>
                               {t.transferAccountName}
                             </>
                           )}

@@ -391,7 +391,7 @@ export function TransactionForm({
               value={values.accountId || null}
               onChange={(v) => set("accountId", v ?? "")}
               exclude={showTransferTo ? values.transferAccountId : undefined}
-              noneLabel="— None —"
+              noneLabel={showTransferTo ? "— Outside my accounts —" : "— None —"}
             />
             {errors.accountId && <p className="text-xs font-[500] text-destructive">{errors.accountId[0]}</p>}
           </div>

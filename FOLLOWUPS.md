@@ -14,6 +14,13 @@ Things to run after a schema-changing PR lands in production. Not
 technical debt — these are real steps, kept here so they don't get lost
 in a long README.
 
+### Account reconciliation (migration 0011)
+
+Apply with 0010 (`pnpm db:migrate` runs both, in order) **before**
+deploying — the accounts list reads `account_reconciliations`. Additive
+only: the new table and a "Balance Adjustment" category for every existing
+user (`ON CONFLICT DO NOTHING`).
+
 ### Accounts (migration 0010)
 
 Apply after 0009 (`pnpm db:migrate` runs them in order), **before**
@@ -95,13 +102,15 @@ instant `is_projected` flips false, separately from the user-entered
 `statement_balance`, so we can surface "we computed $X from your
 transactions; you told us the statement said $Y" diagnostics.
 
-### Accounts: reconcile and transfer polish
+### Accounts: remaining polish
 
-Accounts and the cash-flow view shipped (see CLAUDE.md "Accounts and cash
-flow"). Left out to keep that PR tight:
+Accounts, the cash-flow view and reconciliation shipped (see CLAUDE.md
+"Accounts and cash flow"). Left out to keep that PR tight:
 
-- **Reconcile:** no "statement says $X" check against the computed
-  balance. Users fix drift by editing the opening balance.
+- **Reconciled transactions aren't locked:** editing one dated on or
+  before a reconciliation is allowed; the account just shows as out of
+  sync afterwards. A per-transaction "cleared/reconciled" flag (YNAB
+  style) would allow warning before the edit.
 - **Card payments as account-to-card transfers in the UI:** the pay
   dialog records "Paid from", but the card detail page doesn't show
   which account paid each cycle.

@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Archive, MoreHorizontal, Pencil } from "lucide-react";
+import { AlertTriangle, Archive, CheckCircle2, MoreHorizontal, Pencil, Scale } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
+import { cn, formatCivilDate, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
 import type { AccountListItemDTO } from "@/types";
 import { ACCOUNT_TYPE_LABELS } from "./account-form";
 
@@ -20,9 +20,11 @@ export function AccountTile({
   onEdit,
   onArchive,
   onUnarchive,
+  onReconcile,
 }: {
   account: AccountListItemDTO;
   currency: string;
+  onReconcile?: (a: AccountListItemDTO) => void;
   onEdit: (a: AccountListItemDTO) => void;
   onArchive: (a: AccountListItemDTO) => void;
   onUnarchive?: (a: AccountListItemDTO) => void;
@@ -64,6 +66,11 @@ export function AccountTile({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {account.isActive && onReconcile && (
+                <DropdownMenuItem onClick={() => onReconcile(account)}>
+                  <Scale className="h-4 w-4" /> Reconcile
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => onEdit(account)}>
                 <Pencil className="h-4 w-4" /> Edit
               </DropdownMenuItem>
@@ -103,8 +110,37 @@ export function AccountTile({
               : `${account.transactionCount} transaction${account.transactionCount === 1 ? "" : "s"}`}
             {account.openingBalance !== 0 && ` · opened at ${formatCurrency(account.openingBalance, currency, account.openingBalance < 0)}`}
           </div>
+          {account.reconciliation && <ReconcileStatus status={account.reconciliation} currency={currency} />}
         </Link>
       </CardContent>
     </Card>
+  );
+}
+
+function ReconcileStatus({
+  status,
+  currency,
+}: {
+  status: NonNullable<AccountListItemDTO["reconciliation"]>;
+  currency: string;
+}) {
+  const when = formatCivilDate(status.statementDate, "MMM d");
+  if (status.inSync) {
+    return (
+      <div className="mt-1.5 flex items-center gap-1.5 text-[12px] font-[460] text-muted-foreground">
+        <CheckCircle2 className="h-3.5 w-3.5 text-success" aria-hidden />
+        Reconciled {when}
+      </div>
+    );
+  }
+  const off = Math.round((status.balanceNow - status.statementBalance) * 100) / 100;
+  return (
+    <div
+      className="mt-1.5 flex items-center gap-1.5 text-[12px] font-[540] text-foreground"
+      title={`Your statement said ${formatCurrency(status.statementBalance, currency, status.statementBalance < 0)} on ${when}`}
+    >
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
+      {formatCurrency(off, currency, true)} off the {when} statement
+    </div>
   );
 }
