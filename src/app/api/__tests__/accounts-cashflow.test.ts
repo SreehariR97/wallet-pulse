@@ -177,7 +177,6 @@ describe("transaction account rules", () => {
     const cases: Array<[Record<string, unknown>, RegExp]> = [
       [{ type: "expense", amount: 1, categoryId: A.catId, paymentMethod: "credit_card", creditCardId: CARD, accountId: checking }, /card-paid expense/],
       [{ type: "expense", amount: 1, categoryId: A.catId, accountId: checking, transferAccountId: savings }, /Only transfers/],
-      [{ type: "transfer", amount: 1, categoryId: CAT.move, transferAccountId: savings }, /comes from/],
       [{ type: "transfer", amount: 1, categoryId: CAT.move, accountId: checking, transferAccountId: checking }, /two different/],
     ];
     for (const [body, error] of cases) {
@@ -185,6 +184,15 @@ describe("transaction account rules", () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(error);
     }
+  });
+
+  it("accepts a transfer into an account from outside (no source account)", async () => {
+    const savings = await newAccount({ name: "Savings" });
+    expect((await tx({ type: "transfer", amount: 40, categoryId: CAT.move, transferAccountId: savings })).status).toBe(201);
+    const { body } = await json<{ data: Array<{ id: string; balance: number }> }>(
+      await listAccounts(getReq("http://localhost/api/accounts")),
+    );
+    expect(body.data.find((a) => a.id === savings)?.balance).toBe(40);
   });
 
   it("refuses new links to an archived account but keeps existing ones on edit", async () => {

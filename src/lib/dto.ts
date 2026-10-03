@@ -1,5 +1,5 @@
-import type { accounts, transactions } from "@/lib/db/schema";
-import type { AccountDTO, TransactionDTO } from "@/types";
+import type { accountReconciliations, accounts, transactions } from "@/lib/db/schema";
+import type { AccountDTO, AccountReconciliationDTO, TransactionDTO } from "@/types";
 
 /** Transactions row → API DTO (money coerced to number, dates to ISO). */
 export function toTransactionDTO(t: typeof transactions.$inferSelect): TransactionDTO {
@@ -39,5 +39,21 @@ export function toAccountDTO(a: typeof accounts.$inferSelect): AccountDTO {
     sortOrder: a.sortOrder,
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),
+  };
+}
+
+/** Reconciliation row → API DTO. */
+export function toReconciliationDTO(r: typeof accountReconciliations.$inferSelect): AccountReconciliationDTO {
+  const statementBalance = Number(r.statementBalance);
+  const computedBalance = Number(r.computedBalance);
+  return {
+    id: r.id,
+    accountId: r.accountId,
+    statementDate: r.statementDate,
+    statementBalance,
+    computedBalance,
+    difference: Math.round((statementBalance - computedBalance) * 100) / 100,
+    adjustmentTransactionId: r.adjustmentTransactionId,
+    createdAt: r.createdAt.toISOString(),
   };
 }

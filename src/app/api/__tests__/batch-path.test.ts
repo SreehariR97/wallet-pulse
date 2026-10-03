@@ -40,6 +40,8 @@ import { POST as importPost } from "../import/route";
 import { POST as txPost } from "../transactions/route";
 import { DELETE as bulkDelete } from "../transactions/bulk/route";
 import { POST as budgetPost } from "../budgets/route";
+import { POST as accountPost } from "../accounts/route";
+import { POST as reconcilePost } from "../accounts/[id]/reconcile/route";
 
 const A = TEST_USERS.A;
 const PAY_CAT = "cat-a-ccpay";
@@ -205,6 +207,35 @@ describe("db.batch path (neon-http shape)", () => {
     expect(tx!.categoryId).toBe(REMIT_CAT);
   });
 
+  it("account POST adopts unassigned transactions in the same batch", async () => {
+    await txPost(
+      jsonReq("http://localhost/api/transactions", {
+        type: "income", amount: 70, categoryId: "cat-a-salary", description: "pay", date: "2026-04-01", paymentMethod: "bank_transfer",
+      }),
+    );
+    const res = (await accountPost(jsonReq("http://localhost/api/accounts", { name: "Checking", claimUnassigned: true }))) as Response;
+    expect(res.status).toBe(201);
+    const accountId = (await res.json()).data.id as string;
+    const rows = await currentDb.select().from(schema.transactions).where(eq(schema.transactions.userId, A.userId));
+    expect(rows.map((r) => r.accountId)).toEqual([accountId]);
+  });
+
+  it("reconcile writes the adjustment and the reconciliation together", async () => {
+    await currentDb.insert(schema.categories).values({
+      id: "cat-a-adjust", userId: A.userId, name: "Balance Adjustment", type: "transfer", isDefault: true,
+    });
+    const acct = (await accountPost(jsonReq("http://localhost/api/accounts", { name: "Checking", openingBalance: 100 }))) as Response;
+    const accountId = (await acct.json()).data.id as string;
+    const res = (await reconcilePost(
+      jsonReq(`http://localhost/api/accounts/${accountId}/reconcile`, { statementDate: "2026-04-30", statementBalance: 90 }),
+      { params: { id: accountId } },
+    )) as Response;
+    expect(res.status).toBe(201);
+    const [rec] = await currentDb.select().from(schema.accountReconciliations);
+    const [adj] = await currentDb.select().from(schema.transactions).where(eq(schema.transactions.id, rec!.adjustmentTransactionId!));
+    expect([adj!.amount, adj!.accountId, rec!.computedBalance]).toEqual(["10.00", accountId, "100.00"]);
+  });
+
   it("register creates the user and all default categories atomically", async () => {
     const res = (await register(
       new Request("http://localhost/api/auth/register", {
@@ -219,6 +250,7 @@ describe("db.batch path (neon-http shape)", () => {
     expect(cats.length).toBeGreaterThanOrEqual(20);
     expect(cats.filter((c) => c.type === "transfer").map((c) => c.name).sort()).toEqual([
       "Account Transfer",
+      "Balance Adjustment",
       "Credit Card Payment",
       "International Transfer",
     ]);

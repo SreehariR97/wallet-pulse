@@ -1,6 +1,6 @@
-import { and, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { accounts, transactions } from "@/lib/db/schema";
+import { accountReconciliations, accounts, transactions } from "@/lib/db/schema";
 import type { TxType } from "@/types";
 
 /**
@@ -8,7 +8,9 @@ import type { TxType } from "@/types";
  *  - in:  income, loan_taken, repayment_received
  *  - out: expense, loan_given, repayment_made, transfer (card payments,
  *         remittances, and moves to another account)
- * A transfer's `transfer_account_id` receives the same amount.
+ * A transfer's `transfer_account_id` receives the same amount. A transfer
+ * with only `transfer_account_id` is money arriving from outside your
+ * accounts (e.g. a positive balance adjustment from reconciling).
  *
  * Card-paid expenses carry no account (the card is the instrument); the
  * money leaves an account when the card is paid, as a transfer.
@@ -26,11 +28,15 @@ export interface AccountTotals {
 }
 
 /**
- * Current balance of each of the user's accounts: opening balance plus
- * every signed transaction on it, plus transfers into it. Two grouped
- * queries regardless of how many accounts there are.
+ * Balance of each of the user's accounts: opening balance plus every signed
+ * transaction on it, plus transfers into it — as of `asOf` (inclusive) when
+ * given, otherwise today. Three queries regardless of how many accounts.
  */
-export async function accountTotals(userId: string, accountIds: string[]): Promise<Map<string, AccountTotals>> {
+export async function accountTotals(
+  userId: string,
+  accountIds: string[],
+  asOf?: string,
+): Promise<Map<string, AccountTotals>> {
   const result = new Map<string, AccountTotals>();
   if (accountIds.length === 0) return result;
 
@@ -46,7 +52,13 @@ export async function accountTotals(userId: string, accountIds: string[]): Promi
         count: sql<number>`COUNT(*)`,
       })
       .from(transactions)
-      .where(and(eq(transactions.userId, userId), inArray(transactions.accountId, accountIds)))
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          inArray(transactions.accountId, accountIds),
+          asOf ? lte(transactions.date, asOf) : undefined,
+        ),
+      )
       .groupBy(transactions.accountId),
     db
       .select({
@@ -60,6 +72,7 @@ export async function accountTotals(userId: string, accountIds: string[]): Promi
           eq(transactions.userId, userId),
           isNotNull(transactions.transferAccountId),
           inArray(transactions.transferAccountId, accountIds),
+          asOf ? lte(transactions.date, asOf) : undefined,
         ),
       )
       .groupBy(transactions.transferAccountId),
@@ -109,7 +122,7 @@ export async function validateAccountLinks(
   if (next.transferAccountId) {
     if (next.type !== "transfer") return "Only transfers can move money to another account";
     if (next.creditCardId) return "A card payment can't also be a transfer to another account";
-    if (!next.accountId) return "Choose the account the money comes from";
+    // No source account is fine: money arriving from outside your accounts.
     if (next.accountId === next.transferAccountId) return "Choose two different accounts";
   }
 
@@ -137,4 +150,53 @@ export function claimableByNewAccount(userId: string): SQL | undefined {
     sql`${transactions.transferAccountId} IS NULL`,
     sql`NOT (${transactions.type} = 'expense' AND ${transactions.creditCardId} IS NOT NULL)`,
   );
+}
+
+export interface ReconciliationStatus {
+  statementDate: string;
+  statementBalance: number;
+  /** The balance WalletPulse computes for that date right now. */
+  balanceNow: number;
+}
+
+/**
+ * Each account's latest reconciliation, with the balance recomputed for its
+ * statement date today. If someone has since edited or added a transaction
+ * on or before that date, `balanceNow` no longer equals `statementBalance`.
+ * One query (Postgres DISTINCT ON).
+ */
+export async function reconciliationStatus(userId: string): Promise<Map<string, ReconciliationStatus>> {
+  const inflow = inflowList;
+  const res = await db.execute<{
+    account_id: string;
+    statement_date: string;
+    statement_balance: string;
+    balance_now: string;
+  }>(sql`
+    SELECT r.account_id, r.statement_date::text AS statement_date, r.statement_balance,
+      a.opening_balance
+        + COALESCE((SELECT SUM(CASE WHEN t.type IN (${inflow}) THEN t.amount ELSE -t.amount END)
+                    FROM ${transactions} t
+                    WHERE t.user_id = ${userId} AND t.account_id = r.account_id AND t.date <= r.statement_date), 0)
+        + COALESCE((SELECT SUM(t.amount)
+                    FROM ${transactions} t
+                    WHERE t.user_id = ${userId} AND t.transfer_account_id = r.account_id AND t.date <= r.statement_date), 0)
+        AS balance_now
+    FROM (
+      SELECT DISTINCT ON (account_id) account_id, statement_date, statement_balance
+      FROM ${accountReconciliations}
+      WHERE user_id = ${userId}
+      ORDER BY account_id, statement_date DESC, created_at DESC
+    ) r
+    JOIN ${accounts} a ON a.id = r.account_id
+  `);
+  const out = new Map<string, ReconciliationStatus>();
+  for (const r of res.rows) {
+    out.set(r.account_id, {
+      statementDate: r.statement_date,
+      statementBalance: Number(r.statement_balance),
+      balanceNow: Math.round(Number(r.balance_now) * 100) / 100,
+    });
+  }
+  return out;
 }

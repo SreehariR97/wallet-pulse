@@ -7,7 +7,7 @@ import * as schema from "@/lib/db/schema";
 import { accounts, transactions } from "@/lib/db/schema";
 import { accountCreateSchema } from "@/lib/validations/account";
 import { fail, ok, zodFail, requireUser, isUniqueViolation } from "@/lib/api";
-import { accountTotals, claimableByNewAccount } from "@/lib/accounts";
+import { accountTotals, claimableByNewAccount, reconciliationStatus } from "@/lib/accounts";
 import { toAccountDTO } from "@/lib/dto";
 import type { AccountDTO, AccountListItemDTO } from "@/types";
 
@@ -22,16 +22,23 @@ export async function GET(req: Request) {
     .from(accounts)
     .where(includeArchived ? eq(accounts.userId, auth.userId) : and(eq(accounts.userId, auth.userId), eq(accounts.isActive, true)))
     .orderBy(asc(accounts.sortOrder), asc(accounts.name));
-  const totals = await accountTotals(
-    auth.userId,
-    rows.map((r) => r.id),
-  );
+  const [totals, recon] = await Promise.all([
+    accountTotals(
+      auth.userId,
+      rows.map((r) => r.id),
+    ),
+    reconciliationStatus(auth.userId),
+  ]);
 
-  const items: AccountListItemDTO[] = rows.map((a) => ({
-    ...toAccountDTO(a),
-    balance: totals.get(a.id)?.balance ?? Number(a.openingBalance),
-    transactionCount: totals.get(a.id)?.transactionCount ?? 0,
-  }));
+  const items: AccountListItemDTO[] = rows.map((a) => {
+    const r = recon.get(a.id);
+    return {
+      ...toAccountDTO(a),
+      balance: totals.get(a.id)?.balance ?? Number(a.openingBalance),
+      transactionCount: totals.get(a.id)?.transactionCount ?? 0,
+      reconciliation: r ? { ...r, inSync: Math.abs(r.balanceNow - r.statementBalance) < 0.005 } : null,
+    };
+  });
   return ok(items satisfies AccountListItemDTO[]);
 }
 

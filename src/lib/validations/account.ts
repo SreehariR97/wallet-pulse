@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MAX_MONEY } from "./common";
+import { MAX_MONEY, isoDate } from "./common";
 
 export const accountTypeEnum = z.enum(["checking", "savings", "cash", "wallet", "other"]);
 
@@ -37,3 +37,26 @@ export const accountUpdateSchema = z.object({
 });
 
 export type AccountCreateInput = z.infer<typeof accountCreateSchema>;
+
+/** A signed money value with at most two decimals (balances can be negative). */
+const signedMoney = (label: string) =>
+  z.coerce
+    .number()
+    .min(-MAX_MONEY, `${label} is out of range`)
+    .max(MAX_MONEY, `${label} is out of range`)
+    .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6, `${label} can have at most 2 decimals`);
+
+export const accountReconcileSchema = z.object({
+  statementDate: isoDate(),
+  statementBalance: signedMoney("Statement balance"),
+  /** Add a Balance Adjustment transfer for any difference. */
+  adjust: z.boolean().default(true),
+  /**
+   * The balance the user was shown for `statementDate`. If it changed before
+   * they submitted (another tab, an import), refuse rather than adjust by a
+   * stale difference.
+   */
+  expectedBalance: signedMoney("Expected balance").optional(),
+});
+
+export const accountReconcileQuerySchema = z.object({ date: isoDate() });

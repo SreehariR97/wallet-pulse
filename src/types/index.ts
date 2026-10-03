@@ -136,6 +136,49 @@ export interface AccountDTO {
 export interface AccountListItemDTO extends AccountDTO {
   balance: number;
   transactionCount: number;
+  /** Latest reconciliation, or null if the account was never reconciled. */
+  reconciliation: AccountReconciliationStatusDTO | null;
+}
+
+export interface AccountReconciliationStatusDTO {
+  statementDate: string;
+  statementBalance: number;
+  /**
+   * The balance WalletPulse computes for statementDate now. Differs from
+   * statementBalance when the gap wasn't adjusted, or when a transaction on
+   * or before that date changed after reconciling.
+   */
+  balanceNow: number;
+  inSync: boolean;
+}
+
+/** One entry in an account's reconciliation history. */
+export interface AccountReconciliationDTO {
+  id: string;
+  accountId: string;
+  statementDate: string;
+  statementBalance: number;
+  /** What WalletPulse computed for statementDate at the time. */
+  computedBalance: number;
+  /** statementBalance − computedBalance. */
+  difference: number;
+  /** The Balance Adjustment transfer, if one was added (null if declined or since deleted). */
+  adjustmentTransactionId: string | null;
+  createdAt: string;
+}
+
+/** GET /api/accounts/:id/reconcile?date= */
+export interface AccountReconcilePreviewDTO {
+  date: string;
+  /** WalletPulse's balance for the account at the end of `date`. */
+  balance: number;
+  history: AccountReconciliationDTO[];
+}
+
+/** POST /api/accounts/:id/reconcile */
+export interface AccountReconcileResultDTO {
+  reconciliation: AccountReconciliationDTO;
+  adjustment: TransactionDTO | null;
 }
 
 // ── Budgets ──────────────────────────────────────────────────────────
@@ -373,6 +416,7 @@ export interface ExportJsonDTO {
   categories: CategoryDTO[];
   budgets: BudgetDTO[];
   accounts: AccountDTO[];
+  accountReconciliations: AccountReconciliationDTO[];
 }
 
 // ── User ─────────────────────────────────────────────────────────────

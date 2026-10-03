@@ -334,3 +334,35 @@ export const rateLimits = pgTable("rate_limits", {
 });
 
 export type Account = typeof accounts.$inferSelect;
+
+/**
+ * A statement check: on `statement_date` the bank said the account held
+ * `statement_balance`; WalletPulse computed `computed_balance`. When they
+ * differed and the user chose to fix it, `adjustment_transaction_id` is the
+ * "Balance Adjustment" transfer that closed the gap (SET NULL if it's later
+ * deleted). Rows are an append-only history.
+ */
+export const accountReconciliations = pgTable(
+  "account_reconciliations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    statementDate: date("statement_date", { mode: "string" }).notNull(),
+    statementBalance: numeric("statement_balance", { precision: 14, scale: 2 }).notNull(),
+    computedBalance: numeric("computed_balance", { precision: 14, scale: 2 }).notNull(),
+    adjustmentTransactionId: text("adjustment_transaction_id").references(() => transactions.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+  },
+  (t) => ({
+    accountDateIdx: index("acct_recon_account_date_idx").on(t.accountId, t.statementDate),
+    userIdx: index("acct_recon_user_idx").on(t.userId),
+  })
+);
+export type AccountReconciliation = typeof accountReconciliations.$inferSelect;

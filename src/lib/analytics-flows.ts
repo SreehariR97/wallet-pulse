@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { transactions } from "@/lib/db/schema";
 import { INFLOW_TYPES } from "@/lib/accounts";
 import type { AnalyticsView } from "@/types";
@@ -12,7 +12,8 @@ import type { AnalyticsView } from "@/types";
  *   loans and moves between accounts don't count at all.
  *
  * cashflow — money actually leaving and entering your accounts:
- *   in:  income, loans taken, repayments received
+ *   in:  income, loans taken, repayments received, and transfers into
+ *        your accounts from outside (positive balance adjustments)
  *   out: expenses not paid by card, loans given, repayments made, and
  *        transfers out of your accounts (card payments, remittances)
  *   Card purchases don't count until the card is paid. Moves between two
@@ -61,7 +62,11 @@ export function flowPredicates(view: AnalyticsView, accountId?: string): FlowPre
   }
 
   return {
-    inflow: inArray(t.type, [...INFLOW_TYPES]),
+    inflow: or(
+      inArray(t.type, [...INFLOW_TYPES]),
+      // Money arriving into an account from outside (e.g. a balance adjustment).
+      and(eq(t.type, "transfer"), isNull(t.accountId), isNotNull(t.transferAccountId)),
+    ) as SQL,
     outflow: or(
       and(eq(t.type, "expense"), isNull(t.creditCardId)),
       inArray(t.type, [...OUTFLOW_TYPES]),

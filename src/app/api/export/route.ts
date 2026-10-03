@@ -4,9 +4,9 @@ import { and, eq, gte, lte, asc } from "drizzle-orm";
 import Papa from "papaparse";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
-import { accounts, transactions, categories, budgets } from "@/lib/db/schema";
+import { accountReconciliations, accounts, transactions, categories, budgets } from "@/lib/db/schema";
 import { alias } from "drizzle-orm/pg-core";
-import { toAccountDTO } from "@/lib/dto";
+import { toAccountDTO, toReconciliationDTO } from "@/lib/dto";
 import { zodFail, requireUser } from "@/lib/api";
 import type {
   ExportJsonDTO,
@@ -70,6 +70,10 @@ export async function GET(req: Request) {
     const catRows = await db.select().from(categories).where(eq(categories.userId, auth.userId));
     const budgetRows = await db.select().from(budgets).where(eq(budgets.userId, auth.userId));
     const accountRows = await db.select().from(accounts).where(eq(accounts.userId, auth.userId));
+    const reconRows = await db
+      .select()
+      .from(accountReconciliations)
+      .where(eq(accountReconciliations.userId, auth.userId));
     const txItems: TransactionExportRowDTO[] = rows.map((r) => ({
       id: r.id,
       date: r.date,
@@ -116,6 +120,7 @@ export async function GET(req: Request) {
       categories: catItems,
       budgets: budgetItems,
       accounts: accountRows.map(toAccountDTO),
+      accountReconciliations: reconRows.map(toReconciliationDTO),
     };
     return new Response(JSON.stringify(payload satisfies ExportJsonDTO, null, 2), {
       headers: {

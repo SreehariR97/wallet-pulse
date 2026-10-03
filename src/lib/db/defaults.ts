@@ -30,10 +30,12 @@ export const DEFAULT_CATEGORIES: Array<{
   { name: "Credit Card Payment", icon: "💳", color: "#A78BFA", type: "transfer" },
   { name: "International Transfer", icon: "🌐", color: "#A78BFA", type: "transfer" },
   { name: "Account Transfer", icon: "🔁", color: "#A78BFA", type: "transfer" },
+  { name: "Balance Adjustment", icon: "⚖️", color: "#A78BFA", type: "transfer" },
 ];
 
 export const TRANSFER_CATEGORY_NAMES = {
   creditCardPayment: "Credit Card Payment",
   internationalTransfer: "International Transfer",
   accountTransfer: "Account Transfer",
+  balanceAdjustment: "Balance Adjustment",
 } as const;
