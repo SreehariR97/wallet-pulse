@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import * as React from "react";
-import { ArrowDown, ArrowUp, ChevronsUpDown, CreditCard, MoreHorizontal, Pencil, Trash2, Repeat } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, CreditCard, MoreHorizontal, Pencil, Trash2, Repeat, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -115,6 +115,19 @@ export function TransactionTable({
                           <CreditCard className="h-3 w-3" />
                           {t.creditCardName}
                           {t.creditCardLast4 ? ` · ${t.creditCardLast4}` : ""}
+                        </span>
+                      )}
+                      {(t.accountName || t.transferAccountName) && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.06em] text-muted-foreground">
+                          <Landmark className="h-3 w-3" aria-hidden />
+                          {t.accountName ?? "—"}
+                          {t.transferAccountName && (
+                            <>
+                              <span aria-hidden>→</span>
+                              <span className="sr-only">to</span>
+                              {t.transferAccountName}
+                            </>
+                          )}
                         </span>
                       )}
                       {t.tags &&

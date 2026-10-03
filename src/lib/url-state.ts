@@ -1,5 +1,5 @@
 import type { TxFilterValues } from "@/components/transactions/transaction-filters";
-import type { PaymentMethod, TxType } from "@/types";
+import type { AnalyticsView, PaymentMethod, TxType } from "@/types";
 import { isRealCivilDate } from "@/lib/civil-date";
 
 /**
@@ -62,6 +62,7 @@ export function parseTransactionsUrl(sp: Params): TransactionsUrlState {
       shortcut: shortcut === "card_payments" || shortcut === "remittances" ? shortcut : undefined,
       categoryId: text(sp.get("categoryId"), 64),
       creditCardId: text(sp.get("creditCardId"), 64),
+      accountId: text(sp.get("accountId"), 64),
       from: date(sp.get("from")),
       to: date(sp.get("to")),
       minAmount: min && AMOUNT.test(min) ? min : undefined,
@@ -97,8 +98,23 @@ export function parseMonthParam(v: string | null): Date | undefined {
 export const ANALYTICS_PRESETS = ["thisMonth", "last3", "last6", "thisYear", "lastYear", "all", "custom"] as const;
 export type AnalyticsPreset = (typeof ANALYTICS_PRESETS)[number];
 
-export function parseAnalyticsUrl(sp: Params): { preset: AnalyticsPreset; from?: string; to?: string } {
+export interface AnalyticsUrlState {
+  preset: AnalyticsPreset;
+  from?: string;
+  to?: string;
+  view: AnalyticsView;
+  accountId?: string;
+}
+
+/** `?range=last6&view=cashflow&account=<id>`; spending and all accounts are the defaults. */
+export function parseAnalyticsUrl(sp: Params): AnalyticsUrlState {
   const range = sp.get("range") as AnalyticsPreset | null;
   const preset = range && ANALYTICS_PRESETS.includes(range) ? range : "thisMonth";
-  return preset === "custom" ? { preset, from: date(sp.get("from")), to: date(sp.get("to")) } : { preset };
+  const scope = {
+    view: sp.get("view") === "cashflow" ? ("cashflow" as const) : ("spending" as const),
+    accountId: text(sp.get("account"), 64),
+  };
+  return preset === "custom"
+    ? { preset, from: date(sp.get("from")), to: date(sp.get("to")), ...scope }
+    : { preset, ...scope };
 }

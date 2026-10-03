@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
-import { Plus, LogOut, Moon, Sun, Wallet, Send, Tags } from "lucide-react";
+import { Plus, LogOut, Moon, Sun, Wallet, Send, Tags, Landmark } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
@@ -53,6 +53,12 @@ export function Topbar({ user }: { user: { name: string; email: string } }) {
               <div className="text-xs font-[460] text-muted-foreground">{user.email}</div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild className="md:hidden">
+              <Link href="/accounts">
+                <Landmark className="h-4 w-4" />
+                Accounts
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem asChild className="md:hidden">
               <Link href="/remittances">
                 <Send className="h-4 w-4" />

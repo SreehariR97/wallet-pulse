@@ -19,18 +19,27 @@ export interface TrendPoint {
   net: number;
 }
 
+/** Series names: "Income"/"Expenses" for spending, "Money in"/"Money out" for cash flow. */
+export interface TrendLabels {
+  income: string;
+  expense: string;
+}
+export const SPENDING_LABELS: TrendLabels = { income: "Income", expense: "Expenses" };
+
 export function TrendChart({
   data,
   currency,
   granularity = "daily",
   mode = "area",
   showIncome = true,
+  labels = SPENDING_LABELS,
 }: {
   data: TrendPoint[];
   currency: string;
   granularity?: "daily" | "monthly";
   mode?: "area" | "line";
   showIncome?: boolean;
+  labels?: TrendLabels;
 }) {
   const tickFormatter = (v: string) => {
     try {
@@ -57,12 +66,12 @@ export function TrendChart({
   return (
     <>
       <table className="sr-only">
-        <caption>Income and expenses per {granularity === "monthly" ? "month" : "day"}</caption>
+        <caption>{labels.income} and {labels.expense.toLowerCase()} per {granularity === "monthly" ? "month" : "day"}</caption>
         <thead>
           <tr>
             <th scope="col">{granularity === "monthly" ? "Month" : "Day"}</th>
-            {showIncome && <th scope="col">Income</th>}
-            <th scope="col">Expenses</th>
+            {showIncome && <th scope="col">{labels.income}</th>}
+            <th scope="col">{labels.expense}</th>
           </tr>
         </thead>
         <tbody>
@@ -100,7 +109,7 @@ export function TrendChart({
                 fontSize: 12,
               }}
               labelFormatter={(v) => tickFormatter(String(v))}
-              formatter={(value: number, name: string) => [formatCurrency(value, currency), name.charAt(0).toUpperCase() + name.slice(1)]}
+              formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
             />
             {mode === "line" ? (
               <>
@@ -108,6 +117,7 @@ export function TrendChart({
                   <Line
                     type="monotone"
                     dataKey="income"
+                    name={labels.income}
                     stroke={CHART_SUCCESS}
                     strokeWidth={2.25}
                     dot={{ r: 2.5, fill: CHART_SUCCESS, strokeWidth: 0 }}
@@ -117,6 +127,7 @@ export function TrendChart({
                 <Line
                   type="monotone"
                   dataKey="expense"
+                  name={labels.expense}
                   stroke={CHART_DESTRUCTIVE}
                   strokeWidth={2.25}
                   dot={{ r: 2.5, fill: CHART_DESTRUCTIVE, strokeWidth: 0 }}
@@ -126,9 +137,9 @@ export function TrendChart({
             ) : (
               <>
                 {showIncome && (
-                  <Area type="monotone" dataKey="income" stroke={CHART_SUCCESS} strokeWidth={2.25} fill="url(#gradIncome)" />
+                  <Area type="monotone" dataKey="income" name={labels.income} stroke={CHART_SUCCESS} strokeWidth={2.25} fill="url(#gradIncome)" />
                 )}
-                <Area type="monotone" dataKey="expense" stroke={CHART_DESTRUCTIVE} strokeWidth={2.25} fill="url(#gradExpense)" />
+                <Area type="monotone" dataKey="expense" name={labels.expense} stroke={CHART_DESTRUCTIVE} strokeWidth={2.25} fill="url(#gradExpense)" />
               </>
             )}
           </Chart>

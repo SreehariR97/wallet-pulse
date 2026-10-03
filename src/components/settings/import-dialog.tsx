@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch, errorMessage, jsonBody, revalidateAll } from "@/lib/api-client";
+import { useAccounts } from "@/hooks/useAccounts";
+import { AccountSelect } from "@/components/accounts/account-select";
 
 interface TargetField {
   key: string;
@@ -48,6 +50,8 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [preview, setPreview] = React.useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = React.useState<Record<string, string>>({});
   const [dateOrder, setDateOrder] = React.useState<"MDY" | "DMY">("MDY");
+  const [accountId, setAccountId] = React.useState<string | null>(null);
+  const accounts = useAccounts().all;
   const [pending, setPending] = React.useState(false);
 
   React.useEffect(() => {
@@ -57,6 +61,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       setPreview([]);
       setMapping({});
       setDateOrder("MDY");
+      setAccountId(null);
     }
   }, [open]);
 
@@ -99,7 +104,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         try {
           ({ data } = await apiFetch<{ imported: number; skipped: number }>(
             "/api/import",
-            jsonBody("POST", { rows, dateOrder }),
+            jsonBody("POST", { rows, dateOrder, accountId }),
           ));
         } catch (err) {
           toast.error(errorMessage(err, "Import failed"));
@@ -190,6 +195,22 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 </SelectContent>
               </Select>
             </div>
+
+            {accounts.length > 0 && (
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <Label htmlFor="import-account" className="text-sm">
+                  Add every row to account
+                </Label>
+                <span />
+                <AccountSelect
+                  id="import-account"
+                  accounts={accounts}
+                  value={accountId}
+                  onChange={setAccountId}
+                  noneLabel="— No account —"
+                />
+              </div>
+            )}
 
             {!requiredMet && (
               <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">

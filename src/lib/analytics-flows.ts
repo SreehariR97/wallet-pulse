@@ -2,6 +2,7 @@ import { z } from "zod";
 import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { transactions } from "@/lib/db/schema";
 import { INFLOW_TYPES } from "@/lib/accounts";
+import type { AnalyticsView } from "@/types";
 
 /**
  * The two ways analytics can count money.
@@ -21,7 +22,7 @@ import { INFLOW_TYPES } from "@/lib/accounts";
  * view it's exactly the account's balance movement (src/lib/accounts.ts),
  * including transfers to and from your other accounts.
  */
-export type AnalyticsView = "spending" | "cashflow";
+export type { AnalyticsView };
 
 export const analyticsScopeSchema = {
   view: z.enum(["spending", "cashflow"]).default("spending"),

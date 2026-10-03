@@ -44,12 +44,14 @@ src/
 │   │   ├── analytics/page.tsx
 │   │   ├── budgets/page.tsx
 │   │   ├── categories/page.tsx
+│   │   ├── accounts/page.tsx
 │   │   └── settings/page.tsx
 │   ├── api/
 │   │   ├── auth/{register,[...nextauth]}
 │   │   ├── transactions/{route, [id]/route, bulk/route}
 │   │   ├── categories/{route, [id]/route}
 │   │   ├── budgets/{route, [id]/route}
+│   │   ├── accounts/{route, [id]/route}  # list with live balances; DELETE archives
 │   │   ├── analytics/{summary, trends, category-breakdown, payment-methods}
 │   │   ├── export/route.ts               # CSV + JSON
 │   │   ├── import/route.ts               # CSV with column mapping
@@ -64,6 +66,7 @@ src/
 │   ├── charts/{chart-container,trend-chart,category-donut,category-bar,income-expense-bars,payment-donut,spending-heatmap}
 │   ├── analytics/{analytics-view,mom-table}
 │   ├── budgets/budgets-view.tsx
+│   ├── accounts/{accounts-view,account-form,account-tile,account-select}
 │   ├── categories/categories-view.tsx
 │   ├── transactions/{transaction-table,transaction-form,transaction-filters,transactions-view,quick-add-fab}
 │   ├── settings/{settings-view,import-dialog}
@@ -74,10 +77,13 @@ src/
 │   ├── auth.ts                           # full NextAuth (db-backed Credentials)
 │   ├── auth.config.ts                    # edge-safe shared config (for middleware)
 │   ├── api.ts                            # ok/fail/zodFail/requireUser helpers
+│   ├── dto.ts                            # toTransactionDTO, toAccountDTO
+│   ├── accounts.ts                       # balances, validateAccountLinks
+│   ├── analytics-flows.ts                # spending vs cash-flow predicates
 │   ├── db/{index,schema,migrate,seed,defaults}.ts
 │   ├── validations/{auth,transaction,category,budget,user}.ts
 │   └── utils.ts                          # formatCurrency, CURRENCIES, etc.
-├── hooks/useMonthRange.ts
+├── hooks/{useMonthRange,useUrlState,useAccounts}.ts
 ├── stores/categories.ts                  # Zustand
 ├── types/index.ts
 ├── styles/globals.css                    # HSL theme tokens (dark + light)
@@ -135,13 +141,26 @@ The pure allocation rule lives in `src/lib/credit-cards.ts::allocateCycleForPaym
 
 **Never compute `amount_paid` in JS and write it back** — two concurrent payments each read a snapshot and one overwrites the other (reproduced: 20 parallel $10 payments recorded $30). Instead, in one atomic unit: `lockCard` (SELECT … FOR UPDATE on the card row) first, then your writes, then `reallocateCardCycles`. Under READ COMMITTED each statement gets a fresh snapshot, so the UPDATE after the lock sees every committed payment. `recomputeCardCycleAllocations` does exactly this for callers outside a batch. CSV import never links transactions to cards, so it doesn't recompute.
 
+### Accounts and cash flow
+
+`accounts` (checking, savings, cash, wallet…) hold an `opening_balance`; the current balance is never stored. `accountTotals()` in `src/lib/accounts.ts` derives it: opening + every transaction whose `account_id` is the account (income, loan_taken, repayment_received add — `INFLOW_TYPES`; everything else subtracts) + every transfer whose `transfer_account_id` is the account.
+
+- A **transfer** with `transfer_account_id` is a move between two of the user's accounts (category "Account Transfer"). Without it, a transfer leaves your accounts: a card payment (`credit_card_id`) or a remittance.
+- A **card-paid expense** has no account — the card is the instrument; money leaves an account when the card is paid. The DB CHECK `transactions_transfer_account_check` plus `validateAccountLinks()` enforce the combinations. Call `validateAccountLinks(userId, next, previous)` in every route that writes `account_id`/`transfer_account_id` (transactions POST/PUT, card pay, remittances POST/PATCH, import); it also refuses *new* links to archived accounts while keeping existing ones.
+- Accounts are archived (`is_active=false`), never deleted by the API. Creating an account with `claimUnassigned` adopts every unassigned, non-card-purchase transaction in the same atomic unit.
+
+Analytics routes take `view=spending|cashflow` and `accountId` (`analyticsScopeSchema` + `flowPredicates()` in `src/lib/analytics-flows.ts`):
+- **spending** (default, unchanged): income vs expense; card purchases count when made.
+- **cashflow**: in = INFLOW_TYPES; out = expenses not on a card, loan_given, repayment_made, and transfers leaving your accounts. Card purchases don't count until paid; account-to-account moves cancel out.
+- With `accountId`, cash flow equals exactly that account's balance movement (including transfers to/from your other accounts). A test pins this.
+
 ## Database schema
 
-Tables: `users`, `categories` (per-user), `transactions`, `budgets`, `credit_cards`, `credit_card_cycles`, `remittances`, `rate_limits`. Timestamps stored as `timestamp with time zone`; transaction/budget dates are civil `date` columns compared as YYYY-MM-DD strings. Money is `numeric(14,2)` (converted with `Number()` only when building DTOs). See `src/lib/db/schema.ts`.
+Tables: `users`, `categories` (per-user), `transactions`, `budgets`, `accounts`, `credit_cards`, `credit_card_cycles`, `remittances`, `rate_limits`. Timestamps stored as `timestamp with time zone`; transaction/budget dates are civil `date` columns compared as YYYY-MM-DD strings. Money is `numeric(14,2)` (converted with `Number()` only when building DTOs). See `src/lib/db/schema.ts`.
 
 Constraints worth knowing (migration 0009): one budget per `(user, category, period)` including the category-less overall budget (`NULLS NOT DISTINCT`, so Postgres 15+); one copy of each *default* category name per user (user-created categories may share names); `amount > 0` and enum CHECKs on transactions/budgets/categories (added `NOT VALID`, so legacy rows aren't re-checked). Catch unique violations with `isUniqueViolation(err)` from `src/lib/api.ts` and return 409. Validate dates with `isoDate()` and money with `moneyAmount()` from `src/lib/validations/common.ts` — a bare regex accepts 2026-02-31 and `.positive()` accepts 0.001.
 
-22 default categories seeded on registration, in the same atomic unit as the user row (`defaultCategoryRows(userId)` in `src/lib/db/seed.ts`). The categories GET backfill only restores the two transfer categories that the pay/remittance routes look up by name; other deleted defaults stay deleted.
+23 default categories seeded on registration, in the same atomic unit as the user row (`defaultCategoryRows(userId)` in `src/lib/db/seed.ts`). The categories GET backfill only restores the three transfer categories (`TRANSFER_CATEGORY_NAMES`) that the pay/remittance/transfer flows look up by name; other deleted defaults stay deleted. Account names are unique per user, case-insensitively (`accounts_user_name_uniq`, migration 0010).
 
 ## API conventions
 
@@ -159,7 +178,7 @@ Constraints worth knowing (migration 0009): one budget per `(user, category, per
 - Show `ErrorState` (with a retry) when a request failed; `EmptyState` only for a successful empty result.
 - Charts load through `src/components/charts/lazy.tsx` (Recharts stays out of first-load JS); import chart types from the chart modules directly.
 - Route boundaries: `src/app/(protected)/{loading,error,not-found}.tsx`, plus `src/app/{not-found,global-error}.tsx`.
-- List/view state that a user would expect to survive refresh or a shared link (transactions filters/search/sort/page, dashboard month, analytics range) lives in the URL: read initial values with `useSearchParams()` through the parsers in `src/lib/url-state.ts` (they drop malformed values), write with `useSyncToUrl()` from `src/hooks/useUrlState.ts` (history.replaceState — no server round-trip). Keep `src/lib/url-state.ts` free of Zod: it ships to the browser.
+- List/view state that a user would expect to survive refresh or a shared link (transactions filters/search/sort/page/account, dashboard month, analytics range/view/account) lives in the URL: read initial values with `useSearchParams()` through the parsers in `src/lib/url-state.ts` (they drop malformed values), write with `useSyncToUrl()` from `src/hooks/useUrlState.ts` (history.replaceState — no server round-trip). Keep `src/lib/url-state.ts` free of Zod: it ships to the browser.
 
 ## Code conventions
 

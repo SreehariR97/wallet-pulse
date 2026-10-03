@@ -12,6 +12,9 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { useCategories } from "@/stores/categories";
 import useSWR from "swr";
+import { useAccounts } from "@/hooks/useAccounts";
+import { AccountSelect } from "@/components/accounts/account-select";
+import { TRANSFER_CATEGORY_NAMES } from "@/lib/db/defaults";
 import { cn, currencySymbol, categoryTypeForTransactionType, isInflow, isLoanType } from "@/lib/utils";
 import { ApiError, apiFetch, errorMessage, jsonBody, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 import type { TxType, PaymentMethod, RecurringFrequency, TransactionDTO } from "@/types";
@@ -26,6 +29,10 @@ export interface TransactionFormValues {
   paymentMethod: PaymentMethod;
   /** Empty string = none; otherwise an active card id. */
   creditCardId: string;
+  /** Empty string = none. Where the money comes from (or goes to, for inflows). */
+  accountId: string;
+  /** Transfers only: the account receiving the money. Empty = outside your accounts. */
+  transferAccountId: string;
   isRecurring: boolean;
   recurringFrequency: RecurringFrequency | "";
   tags: string;
@@ -42,6 +49,8 @@ const defaultValues = (): TransactionFormValues => ({
   date: format(new Date(), "yyyy-MM-dd"),
   paymentMethod: "credit_card",
   creditCardId: "",
+  accountId: "",
+  transferAccountId: "",
   isRecurring: false,
   recurringFrequency: "",
   tags: "",
@@ -64,6 +73,7 @@ const TYPE_BUTTONS: TypeButton[] = [
   { type: "loan_taken", label: "Loan Taken", subtitle: "You borrowed" },
   { type: "repayment_received", label: "Repayment In", subtitle: "Paid back to you" },
   { type: "repayment_made", label: "Repayment Out", subtitle: "You paid back" },
+  { type: "transfer", label: "Transfer", subtitle: "Between accounts" },
 ];
 
 function typeButtonClasses(active: boolean, type: TxType): string {
@@ -71,8 +81,8 @@ function typeButtonClasses(active: boolean, type: TxType): string {
   if (type === "income" || type === "repayment_received") return "border-success bg-success/15 text-success";
   if (type === "expense" || type === "repayment_made") return "border-foreground bg-secondary text-foreground";
   if (type === "loan_given") return "border-warning bg-warning/15 text-warning";
-  if (type === "loan_taken") return "border-accent bg-accent/50 text-accent-foreground";
-  return "border-accent bg-accent/50 text-accent-foreground";
+  // Solid accent: a half-transparent one over the dark background fails contrast.
+  return "border-accent bg-accent text-accent-foreground";
 }
 
 export function TransactionForm({
@@ -106,6 +116,7 @@ export function TransactionForm({
   // key with the filters and pay dialog, so it's fetched once.
   const cardsReq = useSWR<ApiEnvelope<CardOption[]>>("/api/credit-cards");
   const cards = cardsReq.data?.data ?? [];
+  const accounts = useAccounts();
 
   React.useEffect(() => {
     if (!loaded) fetchCats();
@@ -125,7 +136,10 @@ export function TransactionForm({
     if (!loaded) return;
     const current = categories.find((c) => c.id === values.categoryId);
     if (!current || current.type !== requiredCategoryType) {
-      const first = filteredCategories[0];
+      const first =
+        (requiredCategoryType === "transfer" &&
+          filteredCategories.find((c) => c.name === TRANSFER_CATEGORY_NAMES.accountTransfer)) ||
+        filteredCategories[0];
       if (first) setValues((v) => ({ ...v, categoryId: first.id }));
       else if (values.categoryId) setValues((v) => ({ ...v, categoryId: "" }));
     }
@@ -137,10 +151,26 @@ export function TransactionForm({
       // Auto-clear creditCardId if paymentMethod leaves credit_card. Keeps
       // the client in sync with the server's coherence check on PUT.
       if (k === "paymentMethod" && v !== "credit_card") next.creditCardId = "";
+      // A card purchase is charged to the card, not an account (the account
+      // pays when the card is paid) — mirrors validateAccountLinks.
+      if (next.type === "expense" && next.creditCardId) next.accountId = "";
+      // A new transfer moves money between accounts, not onto a card.
+      if (k === "type" && v === "transfer" && p.type !== "transfer" && p.paymentMethod === "credit_card") {
+        next.paymentMethod = "bank_transfer";
+        next.creditCardId = "";
+      }
       return next;
     });
     if (errors[k as string]) setErrors((e) => ({ ...e, [k as string]: undefined }));
   }
+
+  const cardPaidExpense = values.type === "expense" && !!values.creditCardId;
+  // A card payment's destination is the card, so it has no "to" account.
+  const showTransferTo = values.type === "transfer" && !values.creditCardId;
+  const hasAccounts = accounts.all.length > 0;
+  const typeButtons = TYPE_BUTTONS.filter(
+    (b) => b.type !== "transfer" || values.type === "transfer" || accounts.active.length >= 2,
+  );
 
   async function submit(addAnother: boolean) {
     setPending(addAnother ? "saveAdd" : "save");
@@ -151,6 +181,8 @@ export function TransactionForm({
       notes: values.notes || null,
       tags: values.tags || null,
       creditCardId: values.creditCardId || null,
+      accountId: cardPaidExpense ? null : values.accountId || null,
+      transferAccountId: showTransferTo ? values.transferAccountId || null : null,
       recurringFrequency: values.isRecurring ? values.recurringFrequency || null : null,
     };
     const url = mode === "create" ? "/api/transactions" : `/api/transactions/${transactionId}`;
@@ -174,6 +206,7 @@ export function TransactionForm({
         paymentMethod: values.paymentMethod,
         categoryId: values.categoryId,
         date: values.date,
+        accountId: values.accountId,
       });
     } else if (redirectOnSave) {
       router.push("/transactions");
@@ -200,7 +233,7 @@ export function TransactionForm({
       <div className="grid gap-1.5">
         <Label id="tx-type-label">Type</Label>
         <div role="radiogroup" aria-labelledby="tx-type-label" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {TYPE_BUTTONS.map(({ type, label, subtitle }) => (
+          {typeButtons.map(({ type, label, subtitle }) => (
             <button
               type="button"
               key={type}
@@ -343,6 +376,44 @@ export function TransactionForm({
           <p className="text-xs text-muted-foreground">
             Optional — reflects on the card&apos;s balance and cycle if set.
           </p>
+        </div>
+      )}
+
+      {hasAccounts && !cardPaidExpense && (
+        <div className={cn("grid gap-4", showTransferTo && "sm:grid-cols-2")}>
+          <div className="grid gap-1.5">
+            <Label htmlFor="tx-account">
+              {values.type === "transfer" ? "From account" : isInflow(values.type) ? "Into account" : "From account"}
+            </Label>
+            <AccountSelect
+              id="tx-account"
+              accounts={accounts.all}
+              value={values.accountId || null}
+              onChange={(v) => set("accountId", v ?? "")}
+              exclude={showTransferTo ? values.transferAccountId : undefined}
+              noneLabel="— None —"
+            />
+            {errors.accountId && <p className="text-xs font-[500] text-destructive">{errors.accountId[0]}</p>}
+          </div>
+          {showTransferTo && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="tx-transfer-account">To account</Label>
+              <AccountSelect
+                id="tx-transfer-account"
+                accounts={accounts.all}
+                value={values.transferAccountId || null}
+                onChange={(v) => set("transferAccountId", v ?? "")}
+                exclude={values.accountId}
+                noneLabel="— Outside my accounts —"
+              />
+            </div>
+          )}
+          {showTransferTo && (
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              A move between two of your accounts changes both balances and doesn&apos;t count as
+              spending or income.
+            </p>
+          )}
         </div>
       )}
 

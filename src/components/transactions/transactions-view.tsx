@@ -58,6 +58,7 @@ export function TransactionsView({ currency }: { currency: string }) {
     if (f.categoryId) p.set("categoryId", f.categoryId);
     if (f.paymentMethod) p.set("paymentMethod", f.paymentMethod);
     if (f.creditCardId) p.set("creditCardId", f.creditCardId);
+    if (f.accountId) p.set("accountId", f.accountId);
     if (f.from) p.set("from", f.from);
     if (f.to) p.set("to", f.to);
     if (f.minAmount) p.set("minAmount", f.minAmount);

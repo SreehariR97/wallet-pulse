@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/dialog";
 import { CURRENCIES, formatAmountFor, formatFxRate } from "@/lib/utils";
 import { apiFetch, errorMessage } from "@/lib/api-client";
+import { useAccounts } from "@/hooks/useAccounts";
+import { AccountSelect } from "@/components/accounts/account-select";
 
 export interface RemittanceFormInitial {
   id: string;
@@ -41,6 +43,7 @@ export interface RemittanceFormInitial {
   recipientNote: string | null;
   isRecurring: boolean;
   recurringFrequency: string | null;
+  accountId: string | null;
 }
 
 export function RemittanceForm({
@@ -66,6 +69,8 @@ export function RemittanceForm({
   const [notes, setNotes] = React.useState("");
   const [isRecurring, setIsRecurring] = React.useState(false);
   const [recurringFrequency, setRecurringFrequency] = React.useState<string>("monthly");
+  const [accountId, setAccountId] = React.useState<string | null>(null);
+  const accounts = useAccounts().all;
   const [pending, setPending] = React.useState(false);
 
   React.useEffect(() => {
@@ -82,6 +87,7 @@ export function RemittanceForm({
     setNotes(initial?.notes ?? "");
     setIsRecurring(initial?.isRecurring ?? false);
     setRecurringFrequency(initial?.recurringFrequency ?? "monthly");
+    setAccountId(initial?.accountId ?? null);
   }, [open, initial]);
 
   const amountNum = Number(amount);
@@ -109,6 +115,7 @@ export function RemittanceForm({
       isRecurring,
       recurringFrequency: isRecurring ? recurringFrequency : null,
       paymentMethod: initial?.paymentMethod ?? "bank_transfer",
+      accountId,
     };
     try {
       await apiFetch(initial ? `/api/remittances/${initial.id}` : "/api/remittances", {
@@ -266,6 +273,19 @@ export function RemittanceForm({
               </span>
             </div>
           </div>
+
+          {accounts.length > 0 && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="rm-account">Sent from</Label>
+              <AccountSelect
+                id="rm-account"
+                accounts={accounts}
+                value={accountId}
+                onChange={setAccountId}
+                noneLabel="— Not tracked —"
+              />
+            </div>
+          )}
 
           <div className="grid gap-1.5">
             <Label htmlFor="rm-recipient">Recipient (optional)</Label>

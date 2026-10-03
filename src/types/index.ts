@@ -27,6 +27,8 @@ export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly";
 export type RemittanceService = "wise" | "remitly" | "western_union" | "bank_wire" | "other";
 export type BudgetPeriod = "weekly" | "monthly" | "yearly";
 export type AccountType = "checking" | "savings" | "cash" | "wallet" | "other";
+/** How analytics counts money — see src/lib/analytics-flows.ts. */
+export type AnalyticsView = "spending" | "cashflow";
 
 // ── Envelopes ────────────────────────────────────────────────────────
 

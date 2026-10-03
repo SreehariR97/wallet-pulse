@@ -40,6 +40,8 @@ export default async function EditTransactionPage({ params }: { params: { id: st
               date: row.date,
               paymentMethod: row.paymentMethod,
               creditCardId: row.creditCardId ?? "",
+              accountId: row.accountId ?? "",
+              transferAccountId: row.transferAccountId ?? "",
               isRecurring: row.isRecurring,
               recurringFrequency: row.recurringFrequency ?? "",
               tags: row.tags ?? "",

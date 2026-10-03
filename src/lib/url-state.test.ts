@@ -7,10 +7,10 @@ const sp = (q: string) => new URLSearchParams(q);
 describe("transactions URL state", () => {
   it("round-trips filters, search, sort and page", () => {
     const q =
-      "type=expense&paymentMethod=upi&categoryId=cat-1&from=2026-04-01&to=2026-04-30&minAmount=10.5&maxAmount=200&tags=work&q=coffee&sort=amount&order=asc&page=3";
+      "type=expense&paymentMethod=upi&categoryId=cat-1&accountId=acct-1&from=2026-04-01&to=2026-04-30&minAmount=10.5&maxAmount=200&tags=work&q=coffee&sort=amount&order=asc&page=3";
     const state = parseTransactionsUrl(sp(q));
     expect(state).toMatchObject({
-      filters: { type: "expense", paymentMethod: "upi", categoryId: "cat-1", from: "2026-04-01", to: "2026-04-30", minAmount: "10.5", maxAmount: "200", tags: "work" },
+      filters: { type: "expense", paymentMethod: "upi", categoryId: "cat-1", accountId: "acct-1", from: "2026-04-01", to: "2026-04-30", minAmount: "10.5", maxAmount: "200", tags: "work" },
       search: "coffee",
       sort: "amount",
       order: "asc",
@@ -37,6 +37,7 @@ describe("transactions URL state", () => {
       shortcut: undefined,
       categoryId: undefined,
       creditCardId: undefined,
+      accountId: undefined,
       from: undefined,
       to: undefined,
       minAmount: undefined,
@@ -56,13 +57,19 @@ describe("dashboard month", () => {
 
 describe("analytics range", () => {
   it("accepts known presets and custom dates", () => {
-    expect(parseAnalyticsUrl(sp("range=last6"))).toEqual({ preset: "last6" });
-    expect(parseAnalyticsUrl(sp("range=custom&from=2026-01-01&to=2026-03-31"))).toEqual({
+    expect(parseAnalyticsUrl(sp("range=last6"))).toMatchObject({ preset: "last6" });
+    expect(parseAnalyticsUrl(sp("range=custom&from=2026-01-01&to=2026-03-31"))).toMatchObject({
       preset: "custom",
       from: "2026-01-01",
       to: "2026-03-31",
     });
-    expect(parseAnalyticsUrl(sp("range=forever"))).toEqual({ preset: "thisMonth" });
+    expect(parseAnalyticsUrl(sp("range=forever"))).toMatchObject({ preset: "thisMonth" });
+  });
+
+  it("reads the view and account, defaulting to spending across all accounts", () => {
+    expect(parseAnalyticsUrl(sp(""))).toEqual({ preset: "thisMonth", view: "spending", accountId: undefined });
+    expect(parseAnalyticsUrl(sp("view=cashflow&account=acct-1"))).toMatchObject({ view: "cashflow", accountId: "acct-1" });
+    expect(parseAnalyticsUrl(sp("view=bogus")).view).toBe("spending");
   });
 });
 

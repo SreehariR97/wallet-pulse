@@ -13,6 +13,7 @@ import { useCategories } from "@/stores/categories";
 import type { TxType, PaymentMethod } from "@/types";
 import useSWR from "swr";
 import type { ApiEnvelope } from "@/lib/api-client";
+import { useAccounts } from "@/hooks/useAccounts";
 
 export interface TxFilterValues {
   type?: TxType;
@@ -20,6 +21,8 @@ export interface TxFilterValues {
   paymentMethod?: PaymentMethod;
   /** Specific credit card id; pass "none" to filter for no-card transactions. */
   creditCardId?: string;
+  /** Money in or out of this account, including transfers to it. */
+  accountId?: string;
   /** Server-side shortcut combining type=transfer with FK presence. */
   shortcut?: "card_payments" | "remittances";
   from?: string;
@@ -74,6 +77,7 @@ export function TransactionFilters({
   // Active cards only — archived cards don't appear in picker (stage 3 rule).
   const cardsReq = useSWR<ApiEnvelope<CardOption[]>>("/api/credit-cards");
   const cards = cardsReq.data?.data ?? [];
+  const accounts = useAccounts().all;
 
   React.useEffect(() => {
     if (!loaded) fetchCats();
@@ -85,6 +89,7 @@ export function TransactionFilters({
     values.categoryId,
     values.paymentMethod,
     values.creditCardId,
+    values.accountId,
     values.from || values.to,
     values.minAmount,
     values.maxAmount,
@@ -156,6 +161,23 @@ export function TransactionFilters({
           <SelectItem value="shortcut:remittances">Remittances</SelectItem>
         </SelectContent>
       </Select>
+
+      {(accounts.length > 0 || values.accountId) && (
+        <Select value={values.accountId ?? ALL} onValueChange={(v) => onChange({ ...values, accountId: toFilterParam(v) })}>
+          <SelectTrigger className="w-[170px]" aria-label="Account">
+            <SelectValue placeholder="Account" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All accounts</SelectItem>
+            {accounts.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.name}
+                {!a.isActive ? " (archived)" : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>

@@ -26,6 +26,8 @@ import { formatCurrency } from "@/lib/utils";
 import { apiFetch, errorMessage } from "@/lib/api-client";
 import useSWR from "swr";
 import type { ApiEnvelope } from "@/lib/api-client";
+import { useAccounts } from "@/hooks/useAccounts";
+import { AccountSelect } from "@/components/accounts/account-select";
 
 interface CardOption {
   id: string;
@@ -54,6 +56,7 @@ export function PayCardDialog({
   const [amount, setAmount] = React.useState("");
   const [date, setDate] = React.useState(format(new Date(), "yyyy-MM-dd"));
   const [notes, setNotes] = React.useState("");
+  const [accountId, setAccountId] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
 
   // Active cards only — archived cards don't receive new payments through
@@ -61,6 +64,7 @@ export function PayCardDialog({
   const cardsReq = useSWR<ApiEnvelope<CardOption[]>>(open ? "/api/credit-cards" : null);
   const cards = cardsReq.data?.data ?? NO_CARDS;
   const cardsLoading = cardsReq.isLoading;
+  const accounts = useAccounts().all;
 
   // Reset on open, then (below, same commit) pick the preset or first card.
   // Order matters: the pick's functional update runs after this reset.
@@ -70,6 +74,7 @@ export function PayCardDialog({
     setAmount("");
     setDate(format(new Date(), "yyyy-MM-dd"));
     setNotes("");
+    setAccountId(null);
   }, [open, presetCardId]);
 
   // Pick the preset (or first) card once the list is available.
@@ -91,6 +96,7 @@ export function PayCardDialog({
           amount: Number(amount),
           date,
           notes: notes.trim() || null,
+          accountId,
         }),
       });
     } catch (err) {
@@ -126,9 +132,9 @@ export function PayCardDialog({
         ) : (
           <form onSubmit={submit} className="space-y-4">
             <div className="grid gap-1.5">
-              <Label>Card</Label>
+              <Label htmlFor="pay-card">Card</Label>
               <Select value={cardId} onValueChange={setCardId}>
-                <SelectTrigger>
+                <SelectTrigger id="pay-card">
                   <SelectValue placeholder="Pick a card" />
                 </SelectTrigger>
                 <SelectContent>
@@ -175,6 +181,19 @@ export function PayCardDialog({
                 />
               </div>
             </div>
+
+            {accounts.length > 0 && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="pay-account">Paid from</Label>
+                <AccountSelect
+                  id="pay-account"
+                  accounts={accounts}
+                  value={accountId}
+                  onChange={setAccountId}
+                  noneLabel="— Not tracked —"
+                />
+              </div>
+            )}
 
             <div className="grid gap-1.5">
               <Label htmlFor="pay-notes">Notes (optional)</Label>

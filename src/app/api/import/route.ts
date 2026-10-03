@@ -8,6 +8,7 @@ import { categories, transactions, type Category } from "@/lib/db/schema";
 import { fail, requireUser } from "@/lib/api";
 import { MAX_MONEY } from "@/lib/validations/common";
 import { importText, parseImportDate, type DateOrder } from "@/lib/import";
+import { validateAccountLinks } from "@/lib/accounts";
 
 type ImportRow = {
   date?: unknown;
@@ -20,7 +21,7 @@ type ImportRow = {
   tags?: unknown;
 };
 
-// 5000 rows x 12 columns would sit right at Postgres's 65,535 bind-parameter
+// 5000 rows x 13 columns would sit right at Postgres's 65,535 bind-parameter
 // limit in one INSERT; chunk well below it.
 const INSERT_CHUNK = 1000;
 
@@ -62,6 +63,19 @@ export async function POST(req: Request) {
   if (rows.length === 0) return fail(400, "No rows to import");
   if (rows.length > 5000) return fail(400, "Too many rows (max 5000 per import)");
   const dateOrder: DateOrder = body.dateOrder === "DMY" ? "DMY" : "MDY";
+  // A bank export belongs to one account: every imported row joins it.
+  let accountId: string | null = null;
+  if (body.accountId != null) {
+    if (typeof body.accountId !== "string" || body.accountId.length > 64) return fail(400, "Invalid account");
+    accountId = body.accountId;
+    const accountError = await validateAccountLinks(auth.userId, {
+      type: "income",
+      creditCardId: null,
+      accountId,
+      transferAccountId: null,
+    });
+    if (accountError) return fail(400, accountError);
+  }
 
   const userCats = await db.select().from(categories).where(eq(categories.userId, auth.userId));
   // Several categories can share a name across types ("Gifts" as expense and
@@ -157,6 +171,7 @@ export async function POST(req: Request) {
       notes: importText(r.notes, 2000),
       date: civilDate,
       paymentMethod,
+      accountId,
       isRecurring: false,
       tags: importText(r.tags, 500),
     });

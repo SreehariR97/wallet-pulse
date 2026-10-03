@@ -18,6 +18,8 @@ import type { CategorySlice } from "@/components/charts/category-donut";
 import { BudgetProgressList, type BudgetProgressItem } from "./budget-progress";
 import { RecentTransactions } from "./recent-transactions";
 import { CardsWidget } from "./cards-widget";
+import { AccountsWidget } from "./accounts-widget";
+import { useAccounts } from "@/hooks/useAccounts";
 import { useMonthRange } from "@/hooks/useMonthRange";
 import { ErrorState } from "@/components/shared/error-state";
 import { revalidateAll, type ApiEnvelope } from "@/lib/api-client";
@@ -38,7 +40,8 @@ export function DashboardView({ userName, currency }: { userName: string; curren
   const budgets = useSWR<ApiEnvelope<BudgetProgressItem[]>>("/api/budgets");
   const recent = useSWR<ApiEnvelope<TransactionListItem[]>>("/api/transactions?page=1&limit=10&sort=date&order=desc");
   const cards = useSWR<ApiEnvelope<CreditCardSummary[]>>("/api/credit-cards");
-  const all = [summary, trend, byCategory, budgets, recent, cards];
+  const accounts = useAccounts();
+  const all = [summary, trend, byCategory, budgets, recent, cards, accounts];
   const failed = all.some((r) => r.error);
 
   return (
@@ -75,6 +78,8 @@ export function DashboardView({ userName, currency }: { userName: string; curren
       )}
 
       <SummaryCards data={summary.data?.data ?? null} currency={currency} loading={summary.isLoading} />
+
+      <AccountsWidget accounts={accounts.active} currency={currency} />
 
       <CardsWidget cards={cards.data?.data ?? []} currency={currency} />
 

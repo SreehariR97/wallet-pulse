@@ -12,16 +12,18 @@ import {
   TOOLTIP_ITEM_STYLE,
   TOOLTIP_BORDER,
 } from "./palette";
-import type { TrendPoint } from "./trend-chart";
+import { SPENDING_LABELS, type TrendLabels, type TrendPoint } from "./trend-chart";
 
 export function IncomeExpenseBars({
   data,
   currency,
   granularity = "monthly",
+  labels = SPENDING_LABELS,
 }: {
   data: TrendPoint[];
   currency: string;
   granularity?: "daily" | "monthly";
+  labels?: TrendLabels;
 }) {
   const tickFormatter = (v: string) => {
     try {
@@ -49,12 +51,12 @@ export function IncomeExpenseBars({
             fontSize: 12,
           }}
           labelFormatter={(v) => tickFormatter(String(v))}
-          formatter={(value: number, name: string) => [formatCurrency(value, currency), name.charAt(0).toUpperCase() + name.slice(1)]}
+          formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
           cursor={{ fill: CURSOR_FILL, opacity: 0.6 }}
         />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-        <Bar dataKey="income" fill={CHART_SUCCESS} radius={[4, 4, 0, 0]} />
-        <Bar dataKey="expense" fill={CHART_DESTRUCTIVE} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="income" name={labels.income} fill={CHART_SUCCESS} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="expense" name={labels.expense} fill={CHART_DESTRUCTIVE} radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

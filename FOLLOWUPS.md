@@ -14,6 +14,16 @@ Things to run after a schema-changing PR lands in production. Not
 technical debt — these are real steps, kept here so they don't get lost
 in a long README.
 
+### Accounts (migration 0010)
+
+Apply after 0009 (`pnpm db:migrate` runs them in order), **before**
+deploying this code — every transaction query now reads
+`transactions.account_id`. Additive only: a new `accounts` table, two
+nullable columns on `transactions`, and an "Account Transfer" category
+inserted for every existing user (`ON CONFLICT DO NOTHING`, so safe on
+users who already have one). No existing row changes; transactions stay
+unassigned until a user creates an account and opts to adopt them.
+
 ### Data integrity (migration 0009)
 
 Apply after 0008 (`pnpm db:migrate` runs both, in order). Needs Postgres
@@ -68,22 +78,6 @@ through `credit_card_cycles`._
 
 ## Credit cards + remittances
 
-### Cash-flow view toggle
-
-The stage-2 plan intentionally deferred this. Analytics queries today
-sum `type IN ('income','expense')` only — the "real spending view" where
-credit-card spend counts as an expense regardless of when the card is
-paid. A "cash flow" view would instead count card *repayments* (transfer
-transactions with a `creditCardId`) and remittances (transfer
-transactions with a remittance row) as outflows, while excluding card
-*expenses* (they don't leave the bank account until the card is paid).
-
-Implement as a toggle in the analytics filter bar. Server-side: either a
-new `?view=cashflow` param that switches the CASE expressions, or a
-dedicated endpoint (`/api/analytics/cashflow-summary` etc.). UI copy
-should explain the difference inline so users know what they're
-looking at.
-
 ### Snapshot card balances on statement close
 
 _Partially resolved by Phases 3–4: `credit_card_cycles` now stores
@@ -101,15 +95,19 @@ instant `is_projected` flips false, separately from the user-entered
 `statement_balance`, so we can surface "we computed $X from your
 transactions; you told us the statement said $Y" diagnostics.
 
-### Multiple accounts as first-class entities
+### Accounts: reconcile and transfer polish
 
-Implied by the cash-flow toggle but bigger: right now "my cash account"
-is an implicit singleton (everything not tagged to a card is "cash").
-Real users have checking + savings + multiple debit cards. Model these
-as a `bank_accounts` table with the same shape as `credit_cards` but
-without cycle fields. Transactions gain an optional `bankAccountId`.
-Card repayments then become real transfers between two first-class
-accounts instead of "money disappears from cash, card balance shrinks."
+Accounts and the cash-flow view shipped (see CLAUDE.md "Accounts and cash
+flow"). Left out to keep that PR tight:
+
+- **Reconcile:** no "statement says $X" check against the computed
+  balance. Users fix drift by editing the opening balance.
+- **Card payments as account-to-card transfers in the UI:** the pay
+  dialog records "Paid from", but the card detail page doesn't show
+  which account paid each cycle.
+- **Multi-currency accounts:** every account is in the user's currency,
+  like transactions. A EUR account for a USD user needs FX conversion
+  first (separate follow-up).
 
 ### FX rate auto-fetch
 

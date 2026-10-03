@@ -39,6 +39,7 @@ import { GET as summary } from "../analytics/summary/route";
 import { GET as trends } from "../analytics/trends/route";
 import { GET as breakdown } from "../analytics/category-breakdown/route";
 import { GET as methods } from "../analytics/payment-methods/route";
+import { POST as importCsv } from "../import/route";
 
 const A = TEST_USERS.A;
 const B = TEST_USERS.B;
@@ -206,6 +207,26 @@ describe("transaction account rules", () => {
       await listTx(getReq("http://localhost/api/transactions", { accountId: savings })),
     );
     expect(body.data).toEqual([expect.objectContaining({ type: "transfer", accountName: "Checking", transferAccountName: "Savings" })]);
+  });
+});
+
+describe("CSV import into an account", () => {
+  it("puts every imported row on the chosen account, and refuses someone else's", async () => {
+    const checking = await newAccount({ name: "Checking" });
+    const rows = [
+      { date: "2026-04-01", type: "income", amount: "100", description: "pay" },
+      { date: "2026-04-02", amount: "30", description: "lunch" },
+    ];
+    const res = await importCsv(jsonReq("http://localhost/api/import", { rows, accountId: checking }));
+    expect(res!.status).toBe(201);
+    const { body } = await json<{ data: Array<{ id: string; balance: number }> }>(
+      await listAccounts(getReq("http://localhost/api/accounts")),
+    );
+    expect(body.data.find((a) => a.id === checking)?.balance).toBe(70);
+
+    asUser(B);
+    const other = await importCsv(jsonReq("http://localhost/api/import", { rows, accountId: checking }));
+    expect(other!.status).toBe(400);
   });
 });
 
