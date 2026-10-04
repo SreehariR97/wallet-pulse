@@ -9,6 +9,7 @@ import { fail, requireUser } from "@/lib/api";
 import { MAX_MONEY } from "@/lib/validations/common";
 import { importText, parseImportDate, type DateOrder } from "@/lib/import";
 import { validateAccountLinks } from "@/lib/accounts";
+import { guardReconciled } from "@/lib/reconcile-lock";
 
 type ImportRow = {
   date?: unknown;
@@ -176,6 +177,15 @@ export async function POST(req: Request) {
       tags: importText(r.tags, 500),
     });
   });
+
+  if (accountId && inserts.length > 0) {
+    const blocked = await guardReconciled(
+      req,
+      auth.userId,
+      inserts.map((i) => ({ date: i.date, accountId, transferAccountId: null })),
+    );
+    if (blocked) return blocked;
+  }
 
   if (inserts.length > 0) {
     const chunks: Array<typeof inserts> = [];

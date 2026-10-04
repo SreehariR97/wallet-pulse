@@ -5,6 +5,7 @@ import { transactionUpdateSchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { recomputeCardCycleAllocations } from "@/lib/credit-card-allocation";
 import { validateAccountLinks } from "@/lib/accounts";
+import { balanceChanged, guardReconciled, type LedgerState } from "@/lib/reconcile-lock";
 import type { TransactionDTO, DeletedIdDTO } from "@/types";
 import { toTransactionDTO } from "@/lib/dto";
 
@@ -99,17 +100,26 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     }
   }
 
+  const after: LedgerState = {
+    type: finalType,
+    amount: t.amount ?? existing.amount,
+    date: t.date ?? existing.date,
+    accountId: t.accountId === undefined ? existing.accountId : t.accountId,
+    transferAccountId: t.transferAccountId === undefined ? existing.transferAccountId : t.transferAccountId,
+  };
   const accountError = await validateAccountLinks(
     auth.userId,
-    {
-      type: finalType,
-      creditCardId: finalCard,
-      accountId: t.accountId === undefined ? existing.accountId : t.accountId,
-      transferAccountId: t.transferAccountId === undefined ? existing.transferAccountId : t.transferAccountId,
-    },
+    { type: finalType, creditCardId: finalCard, accountId: after.accountId, transferAccountId: after.transferAccountId },
     existing,
   );
   if (accountError) return fail(400, accountError);
+
+  // Only balance-moving edits touch a reconciled period; renaming or
+  // recategorising a reconciled transaction is always fine.
+  if (balanceChanged(existing, after)) {
+    const blocked = await guardReconciled(req, auth.userId, [existing, after]);
+    if (blocked) return blocked;
+  }
 
   const patch: TransactionPatch = {};
   if (t.type !== undefined) patch.type = t.type;
@@ -152,11 +162,13 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   return ok(toTransactionDTO(row) satisfies TransactionDTO);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
   const existing = await assertOwned(params.id, auth.userId);
   if (!existing) return fail(404, "Transaction not found");
+  const blocked = await guardReconciled(req, auth.userId, [existing]);
+  if (blocked) return blocked;
   await db.delete(transactions).where(eq(transactions.id, params.id));
   if (existing.type === "transfer" && existing.creditCardId) {
     await recomputeCardCycleAllocations(db, auth.userId, existing.creditCardId);

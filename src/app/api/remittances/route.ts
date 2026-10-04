@@ -20,6 +20,7 @@ import { TRANSFER_CATEGORY_NAMES } from "@/lib/db/defaults";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import type { RemittanceDTO } from "@/types";
 import { validateAccountLinks } from "@/lib/accounts";
+import { guardReconciled } from "@/lib/reconcile-lock";
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -144,6 +145,10 @@ export async function POST(req: Request) {
     transferAccountId: null,
   });
   if (accountError) return fail(400, accountError);
+  const blocked = await guardReconciled(req, auth.userId, [
+    { date: r.date, accountId: r.accountId ?? null, transferAccountId: null },
+  ]);
+  if (blocked) return blocked;
 
   const txId = randomUUID();
   const remitId = randomUUID();

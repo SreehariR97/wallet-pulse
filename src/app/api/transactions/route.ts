@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { accounts, transactions, categories, creditCards, remittances } from "@/lib/db/schema";
 import { alias } from "drizzle-orm/pg-core";
 import { validateAccountLinks } from "@/lib/accounts";
+import { guardReconciled, isReconciledSql } from "@/lib/reconcile-lock";
 import { transactionCreateSchema, transactionQuerySchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { recomputeCardCycleAllocations } from "@/lib/credit-card-allocation";
@@ -100,6 +101,7 @@ export async function GET(req: Request) {
       accountName: accounts.name,
       transferAccountId: transactions.transferAccountId,
       transferAccountName: transferAccount.name,
+      reconciled: isReconciledSql,
       createdAt: transactions.createdAt,
     })
     .from(transactions)
@@ -137,6 +139,7 @@ export async function GET(req: Request) {
     accountName: r.accountName,
     transferAccountId: r.transferAccountId,
     transferAccountName: r.transferAccountName,
+    reconciled: Boolean(r.reconciled),
     createdAt: r.createdAt.toISOString(),
   }));
   return ok(normalized satisfies TransactionListItem[], { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) });
@@ -183,6 +186,12 @@ export async function POST(req: Request) {
     transferAccountId: t.transferAccountId ?? null,
   });
   if (accountError) return fail(400, accountError);
+
+  // Backdating into a reconciled period changes that statement's balance.
+  const blocked = await guardReconciled(req, auth.userId, [
+    { date: t.date, accountId: t.accountId ?? null, transferAccountId: t.transferAccountId ?? null },
+  ]);
+  if (blocked) return blocked;
 
   const [row] = await db
     .insert(transactions)

@@ -41,10 +41,11 @@ async function body<T>(res: Response | undefined): Promise<{ status: number; dat
 
 let checking: string;
 
-async function tx(b: Record<string, unknown>) {
-  const res = await createTx(
-    jsonReq("http://localhost/api/transactions", { description: "t", paymentMethod: "debit_card", accountId: checking, ...b }),
-  );
+/** `confirm` acknowledges changing a reconciled period (src/lib/reconcile-lock.ts). */
+async function tx(b: Record<string, unknown>, confirm = false) {
+  const r = jsonReq("http://localhost/api/transactions", { description: "t", paymentMethod: "debit_card", accountId: checking, ...b });
+  if (confirm) r.headers.set("x-confirm-reconciled", "1");
+  const res = await createTx(r);
   expect((res as Response).status).toBe(201);
   return ((await (res as Response).json()) as { data: { id: string } }).data.id;
 }
@@ -131,7 +132,7 @@ describe("account reconciliation", () => {
     await post({ statementDate: "2026-04-15", statementBalance: 1300 });
     await tx({ type: "expense", amount: 30, categoryId: A.catId, date: "2026-04-25" });
     expect((await listed()).reconciliation?.inSync).toBe(true);
-    await tx({ type: "expense", amount: 30, categoryId: A.catId, date: "2026-04-12" });
+    await tx({ type: "expense", amount: 30, categoryId: A.catId, date: "2026-04-12" }, true);
     expect((await listed()).reconciliation).toMatchObject({ balanceNow: 1270, inSync: false });
   });
 
@@ -144,7 +145,9 @@ describe("account reconciliation", () => {
   it("keeps history newest first and unlinks a deleted adjustment", async () => {
     const first = await body<AccountReconcileResultDTO>(await post({ statementDate: "2026-04-15", statementBalance: 1290 }));
     await post({ statementDate: "2026-04-30", statementBalance: 1240 });
-    await deleteTx(new Request("http://localhost", { method: "DELETE" }), { params: { id: first.data.adjustment!.id } });
+    await deleteTx(new Request("http://localhost", { method: "DELETE", headers: { "x-confirm-reconciled": "1" } }), {
+      params: { id: first.data.adjustment!.id },
+    });
     const { history } = await balanceOn("2026-04-30");
     expect(history.map((h) => [h.statementDate, h.adjustmentTransactionId === null])).toEqual([
       ["2026-04-30", true], // matched after the first adjustment: nothing added

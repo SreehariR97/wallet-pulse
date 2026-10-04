@@ -4,6 +4,7 @@ import { accounts } from "@/lib/db/schema";
 import { accountUpdateSchema } from "@/lib/validations/account";
 import { fail, ok, zodFail, requireUser, isUniqueViolation } from "@/lib/api";
 import { toAccountDTO } from "@/lib/dto";
+import { guardOpeningBalance } from "@/lib/reconcile-lock";
 import type { AccountDTO } from "@/types";
 
 type AccountPatch = Partial<Omit<typeof accounts.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">>;
@@ -30,6 +31,20 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (p.sortOrder !== undefined) patch.sortOrder = p.sortOrder;
   if (p.isActive !== undefined) patch.isActive = p.isActive;
   if (Object.keys(patch).length === 0) return fail(400, "Nothing to update");
+
+  if (patch.openingBalance !== undefined) {
+    const [current] = await db
+      .select({ openingBalance: accounts.openingBalance })
+      .from(accounts)
+      .where(ownedBy(params.id, auth.userId))
+      .limit(1);
+    if (!current) return fail(404, "Account not found");
+    // Shifts every balance the account was reconciled at.
+    if (Number(current.openingBalance) !== Number(patch.openingBalance)) {
+      const blocked = await guardOpeningBalance(req, auth.userId, params.id);
+      if (blocked) return blocked;
+    }
+  }
 
   try {
     const [row] = await db.update(accounts).set(patch).where(ownedBy(params.id, auth.userId)).returning();

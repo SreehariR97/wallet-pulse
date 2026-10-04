@@ -24,6 +24,7 @@ import { lockCard, reallocateCardCycles } from "@/lib/credit-card-allocation";
 import type { TransactionDTO } from "@/types";
 import { toTransactionDTO } from "@/lib/dto";
 import { validateAccountLinks } from "@/lib/accounts";
+import { guardReconciled } from "@/lib/reconcile-lock";
 
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -67,6 +68,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     transferAccountId: null,
   });
   if (accountError) return fail(400, accountError);
+  const blocked = await guardReconciled(req, auth.userId, [
+    { date: p.date, accountId: p.accountId ?? null, transferAccountId: null },
+  ]);
+  if (blocked) return blocked;
 
   const id = randomUUID();
   const insertValues = {

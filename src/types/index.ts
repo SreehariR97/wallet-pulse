@@ -91,6 +91,8 @@ export interface TransactionListItem {
   accountName?: string | null;
   transferAccountId?: string | null;
   transferAccountName?: string | null;
+  /** Dated on or before the latest reconciliation of an account it's linked to. */
+  reconciled?: boolean;
   createdAt: string;
 }
 
