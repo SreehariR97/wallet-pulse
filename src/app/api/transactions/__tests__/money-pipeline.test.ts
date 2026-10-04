@@ -216,8 +216,9 @@ describe("Money pipeline — precision edge cases (Group B)", () => {
   });
 
   it("B2b: zero — the database rejects a new zero amount even if a route skipped Zod", async () => {
-    await expect(
-      currentDb.insert(schema.transactions).values({
+    const err = await currentDb
+      .insert(schema.transactions)
+      .values({
         id: "tx-zero-new",
         userId: A.userId,
         categoryId: A.catId,
@@ -225,8 +226,11 @@ describe("Money pipeline — precision edge cases (Group B)", () => {
         amount: "0",
         description: "zero",
         date: TX_DATE,
-      }),
-    ).rejects.toThrow(/transactions_amount_positive/);
+      })
+      .then(() => null, (e: unknown) => e);
+    // Newer drizzle wraps driver errors ("Failed query: …") and keeps the
+    // Postgres error as `cause`, so look down the chain like isUniqueViolation.
+    expect(errorChainText(err)).toMatch(/transactions_amount_positive/);
   });
 
   it("B3: negative — POST /api/transactions with amount=-5.25 is rejected by Zod with 400", async () => {
@@ -476,3 +480,13 @@ describe("Query param validation (Group F — task 8)", () => {
     expect(body.details?.format).toBeDefined();
   });
 });
+
+/** Every message in an error's `cause` chain, joined. */
+function errorChainText(err: unknown): string {
+  const parts: string[] = [];
+  for (let e: unknown = err, depth = 0; e && depth < 5; depth++) {
+    if (e instanceof Error) parts.push(e.message);
+    e = typeof e === "object" ? (e as { cause?: unknown }).cause : undefined;
+  }
+  return parts.join(" | ");
+}
