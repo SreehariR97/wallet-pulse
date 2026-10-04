@@ -11,6 +11,16 @@ updates:
       # its own review.
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Tracks the Node 22.x runtime pinned in `engines` (Vercel).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # Tailwind 4 is a migration (see FOLLOWUPS.md), not a bump.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      # Must match the Next.js major; upgrade together with `next`.
+      - dependency-name: eslint-config-next
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
