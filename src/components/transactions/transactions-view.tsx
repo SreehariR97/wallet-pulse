@@ -3,6 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { Download, Loader2, Plus, Search, Trash2, Receipt } from "lucide-react";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -105,14 +106,17 @@ export function TransactionsView({ currency }: { currency: string }) {
     setSelected(all ? new Set(items.map((t) => t.id)) : new Set());
   }
 
+  const guarded = useReconciledWrite();
   async function bulkDelete() {
     setBulkPending(true);
     try {
-      await apiFetch("/api/transactions/bulk", jsonBody("DELETE", { ids: Array.from(selected) }));
+      const ids = Array.from(selected);
+      await guarded((headers) => apiFetch("/api/transactions/bulk", { ...jsonBody("DELETE", { ids }), headers }));
       toast.success(`${selected.size} transactions deleted`);
       setSelected(new Set());
       await revalidateAll();
     } catch (err) {
+      if (err instanceof WriteCancelled) return;
       toast.error(errorMessage(err, "Failed to delete transactions"));
     } finally {
       setBulkPending(false);

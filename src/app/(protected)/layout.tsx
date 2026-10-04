@@ -6,6 +6,7 @@ import { MobileNav } from "@/components/layout/mobile-nav";
 import { QuickAddFab } from "@/components/transactions/quick-add-fab";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SWRProvider } from "@/components/swr-provider";
+import { ReconciledConfirmProvider } from "@/components/shared/reconciled-confirm";
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -14,15 +15,17 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   return (
     <ThemeProvider>
       <SWRProvider>
-        <div className="flex min-h-screen flex-col md:flex-row">
-          <Sidebar user={session.user} />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <Topbar user={session.user} />
-            <main className="flex-1 overflow-x-hidden px-4 py-6 pb-24 md:px-8 md:pb-8">{children}</main>
+        <ReconciledConfirmProvider>
+          <div className="flex min-h-screen flex-col md:flex-row">
+            <Sidebar user={session.user} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Topbar user={session.user} />
+              <main className="flex-1 overflow-x-hidden px-4 py-6 pb-24 md:px-8 md:pb-8">{children}</main>
+            </div>
+            <MobileNav />
+            <QuickAddFab currency={session.user.currency ?? "USD"} />
           </div>
-          <MobileNav />
-          <QuickAddFab currency={session.user.currency ?? "USD"} />
-        </div>
+        </ReconciledConfirmProvider>
       </SWRProvider>
     </ThemeProvider>
   );

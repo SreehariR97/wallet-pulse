@@ -3,6 +3,7 @@ import * as React from "react";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,6 +59,7 @@ export function PayCardDialog({
   const [notes, setNotes] = React.useState("");
   const [accountId, setAccountId] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
+  const guarded = useReconciledWrite();
 
   // Active cards only — archived cards don't receive new payments through
   // this shortcut (you can still edit older transactions tagged to them).
@@ -90,16 +92,10 @@ export function PayCardDialog({
     if (!cardId) return;
     setPending(true);
     try {
-      await apiFetch(`/api/credit-cards/${cardId}/pay`, {
-        method: "POST",
-        body: JSON.stringify({
-          amount: Number(amount),
-          date,
-          notes: notes.trim() || null,
-          accountId,
-        }),
-      });
+      const body = JSON.stringify({ amount: Number(amount), date, notes: notes.trim() || null, accountId });
+      await guarded((headers) => apiFetch(`/api/credit-cards/${cardId}/pay`, { method: "POST", body, headers }));
     } catch (err) {
+      if (err instanceof WriteCancelled) return;
       toast.error(errorMessage(err, "Failed to record payment"));
       return;
     } finally {

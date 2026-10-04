@@ -3,6 +3,7 @@ import * as React from "react";
 import { format } from "date-fns";
 import { MoreHorizontal, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -85,12 +86,14 @@ export function RemittancesView({ currency }: { currency: string }) {
   const stats = statsReq.data ?? null;
   const statsLoading = statsReq.isLoading;
 
+  const guarded = useReconciledWrite();
   async function doDelete(r: RemittanceRow) {
     try {
-      await apiFetch(`/api/remittances/${r.id}`, { method: "DELETE" });
+      await guarded((headers) => apiFetch(`/api/remittances/${r.id}`, { method: "DELETE", headers }));
       toast.success("Remittance deleted");
       await revalidateAll();
     } catch (err) {
+      if (err instanceof WriteCancelled) return;
       toast.error(errorMessage(err, "Failed to delete remittance"));
     }
   }

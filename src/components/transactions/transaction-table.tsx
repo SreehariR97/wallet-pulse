@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
 import * as React from "react";
-import { ArrowDown, ArrowUp, ChevronsUpDown, CreditCard, MoreHorizontal, Pencil, Trash2, Repeat, Landmark } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, CreditCard, MoreHorizontal, Pencil, Trash2, Repeat, Landmark, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
@@ -48,11 +49,13 @@ export function TransactionTable({
   onDeleted: (id: string) => void;
 }) {
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
+  const guarded = useReconciledWrite();
 
   async function doDelete(id: string) {
     try {
-      await apiFetch(`/api/transactions/${id}`, { method: "DELETE" });
+      await guarded((headers) => apiFetch(`/api/transactions/${id}`, { method: "DELETE", headers }));
     } catch (err) {
+      if (err instanceof WriteCancelled) return;
       toast.error(errorMessage(err, "Failed to delete transaction"));
       return;
     }
@@ -115,6 +118,15 @@ export function TransactionTable({
                           <CreditCard className="h-3 w-3" />
                           {t.creditCardName}
                           {t.creditCardLast4 ? ` · ${t.creditCardLast4}` : ""}
+                        </span>
+                      )}
+                      {t.reconciled && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.06em] text-muted-foreground"
+                          title="In a reconciled period: changing the amount, date or account will ask first"
+                        >
+                          <Lock className="h-3 w-3" aria-hidden />
+                          Reconciled
                         </span>
                       )}
                       {(t.accountName || t.transferAccountName) && (

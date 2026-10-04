@@ -2,6 +2,7 @@
 import * as React from "react";
 import Papa from "papaparse";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Loader2, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [accountId, setAccountId] = React.useState<string | null>(null);
   const accounts = useAccounts().all;
   const [pending, setPending] = React.useState(false);
+  const guarded = useReconciledWrite();
 
   React.useEffect(() => {
     if (!open) {
@@ -102,11 +104,14 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         });
         let data: { imported: number; skipped: number };
         try {
-          ({ data } = await apiFetch<{ imported: number; skipped: number }>(
-            "/api/import",
-            jsonBody("POST", { rows, dateOrder, accountId }),
+          ({ data } = await guarded((headers) =>
+            apiFetch<{ imported: number; skipped: number }>("/api/import", {
+              ...jsonBody("POST", { rows, dateOrder, accountId }),
+              headers,
+            }),
           ));
         } catch (err) {
+          if (err instanceof WriteCancelled) return;
           toast.error(errorMessage(err, "Import failed"));
           return;
         } finally {

@@ -3,6 +3,7 @@ import * as React from "react";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +73,7 @@ export function RemittanceForm({
   const [accountId, setAccountId] = React.useState<string | null>(null);
   const accounts = useAccounts().all;
   const [pending, setPending] = React.useState(false);
+  const guarded = useReconciledWrite();
 
   React.useEffect(() => {
     if (!open) return;
@@ -118,11 +120,15 @@ export function RemittanceForm({
       accountId,
     };
     try {
-      await apiFetch(initial ? `/api/remittances/${initial.id}` : "/api/remittances", {
-        method: initial ? "PATCH" : "POST",
-        body: JSON.stringify(payload),
-      });
+      await guarded((headers) =>
+        apiFetch(initial ? `/api/remittances/${initial.id}` : "/api/remittances", {
+          method: initial ? "PATCH" : "POST",
+          body: JSON.stringify(payload),
+          headers,
+        }),
+      );
     } catch (err) {
+      if (err instanceof WriteCancelled) return;
       toast.error(errorMessage(err, "Failed to save remittance"));
       return;
     } finally {

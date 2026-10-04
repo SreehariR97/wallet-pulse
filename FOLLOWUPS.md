@@ -107,10 +107,6 @@ transactions; you told us the statement said $Y" diagnostics.
 Accounts, the cash-flow view and reconciliation shipped (see CLAUDE.md
 "Accounts and cash flow"). Left out to keep that PR tight:
 
-- **Reconciled transactions aren't locked:** editing one dated on or
-  before a reconciliation is allowed; the account just shows as out of
-  sync afterwards. A per-transaction "cleared/reconciled" flag (YNAB
-  style) would allow warning before the edit.
 - **Card payments as account-to-card transfers in the UI:** the pay
   dialog records "Paid from", but the card detail page doesn't show
   which account paid each cycle.

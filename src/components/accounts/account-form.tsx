@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,7 @@ export function AccountForm({
   const [opening, setOpening] = React.useState("0");
   const [claim, setClaim] = React.useState(false);
   const [pending, setPending] = React.useState(false);
+  const guarded = useReconciledWrite();
 
   React.useEffect(() => {
     if (!open) return;
@@ -70,11 +72,14 @@ export function AccountForm({
     };
     if (!initial) payload.claimUnassigned = claim;
     try {
-      await apiFetch(
-        initial ? `/api/accounts/${initial.id}` : "/api/accounts",
-        jsonBody(initial ? "PATCH" : "POST", payload),
+      await guarded((headers) =>
+        apiFetch(initial ? `/api/accounts/${initial.id}` : "/api/accounts", {
+          ...jsonBody(initial ? "PATCH" : "POST", payload),
+          headers,
+        }),
       );
     } catch (err) {
+      if (err instanceof WriteCancelled) return;
       toast.error(errorMessage(err, "Failed to save account"));
       return;
     } finally {

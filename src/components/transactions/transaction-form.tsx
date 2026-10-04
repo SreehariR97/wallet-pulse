@@ -3,6 +3,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +112,7 @@ export function TransactionForm({
   const [values, setValues] = React.useState<TransactionFormValues>(() => ({ ...defaultValues(), ...initial }));
   const [pending, setPending] = React.useState<"save" | "saveAdd" | null>(null);
   const [errors, setErrors] = React.useState<Record<string, string[] | undefined>>({});
+  const guarded = useReconciledWrite();
   // Active cards only — archived cards are intentionally excluded from the
   // picker (stage 3 rule). Legacy transactions retain their FK. Shared SWR
   // key with the filters and pay dialog, so it's fetched once.
@@ -188,8 +190,10 @@ export function TransactionForm({
     const url = mode === "create" ? "/api/transactions" : `/api/transactions/${transactionId}`;
     let saved: TransactionDTO;
     try {
-      saved = (await apiFetch<TransactionDTO>(url, jsonBody(mode === "create" ? "POST" : "PUT", payload))).data;
+      const init = jsonBody(mode === "create" ? "POST" : "PUT", payload);
+      saved = (await guarded((headers) => apiFetch<TransactionDTO>(url, { ...init, headers }))).data;
     } catch (err) {
+      if (err instanceof WriteCancelled) return;
       if (err instanceof ApiError && err.details) setErrors(err.details);
       toast.error(errorMessage(err, "Failed to save transaction"));
       return;
