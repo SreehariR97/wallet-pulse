@@ -10,6 +10,13 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
     environment: "node",
+    server: {
+      deps: {
+        // next-auth's ESM build imports "next/server" without an extension,
+        // which Node's resolver rejects. Inlining lets Vite resolve it.
+        inline: ["next-auth"],
+      },
+    },
   },
   resolve: {
     alias: {

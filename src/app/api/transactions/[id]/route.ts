@@ -4,33 +4,15 @@ import { transactions, categories, creditCards, remittances } from "@/lib/db/sch
 import { transactionUpdateSchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { recomputeCardCycleAllocations } from "@/lib/credit-card-allocation";
+import { validateAccountLinks } from "@/lib/accounts";
+import { balanceChanged, guardReconciled, type LedgerState } from "@/lib/reconcile-lock";
 import type { TransactionDTO, DeletedIdDTO } from "@/types";
+import { toTransactionDTO } from "@/lib/dto";
 
 type TransactionPatch = Partial<
   Omit<typeof transactions.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">
 >;
 
-function toTransactionDTO(t: typeof transactions.$inferSelect): TransactionDTO {
-  return {
-    id: t.id,
-    userId: t.userId,
-    categoryId: t.categoryId,
-    type: t.type,
-    amount: Number(t.amount),
-    currency: t.currency,
-    description: t.description,
-    notes: t.notes,
-    date: t.date,
-    paymentMethod: t.paymentMethod,
-    creditCardId: t.creditCardId,
-    isRecurring: t.isRecurring,
-    recurringFrequency: t.recurringFrequency,
-    tags: t.tags,
-    receiptUrl: t.receiptUrl,
-    createdAt: t.createdAt.toISOString(),
-    updatedAt: t.updatedAt.toISOString(),
-  };
-}
 
 async function assertOwned(id: string, userId: string) {
   const [row] = await db.select().from(transactions).where(and(eq(transactions.id, id), eq(transactions.userId, userId))).limit(1);
@@ -67,7 +49,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 
   // Re-verify card ownership. Passing null explicitly clears the link.
+  // Linking to an archived card is refused, but a transaction already on
+  // one keeps it: the edit form always resends creditCardId, and fixing a
+  // typo on an old transaction shouldn't fail.
   if (t.creditCardId) {
+    const keepsExistingCard = t.creditCardId === existing.creditCardId;
     const [card] = await db
       .select({ id: creditCards.id })
       .from(creditCards)
@@ -75,7 +61,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         and(
           eq(creditCards.id, t.creditCardId),
           eq(creditCards.userId, auth.userId),
-          eq(creditCards.isActive, true),
+          keepsExistingCard ? undefined : eq(creditCards.isActive, true),
         ),
       )
       .limit(1);
@@ -114,6 +100,27 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     }
   }
 
+  const after: LedgerState = {
+    type: finalType,
+    amount: t.amount ?? existing.amount,
+    date: t.date ?? existing.date,
+    accountId: t.accountId === undefined ? existing.accountId : t.accountId,
+    transferAccountId: t.transferAccountId === undefined ? existing.transferAccountId : t.transferAccountId,
+  };
+  const accountError = await validateAccountLinks(
+    auth.userId,
+    { type: finalType, creditCardId: finalCard, accountId: after.accountId, transferAccountId: after.transferAccountId },
+    existing,
+  );
+  if (accountError) return fail(400, accountError);
+
+  // Only balance-moving edits touch a reconciled period; renaming or
+  // recategorising a reconciled transaction is always fine.
+  if (balanceChanged(existing, after)) {
+    const blocked = await guardReconciled(req, auth.userId, [existing, after]);
+    if (blocked) return blocked;
+  }
+
   const patch: TransactionPatch = {};
   if (t.type !== undefined) patch.type = t.type;
   if (t.amount !== undefined) patch.amount = String(t.amount);
@@ -123,6 +130,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   if (t.date !== undefined) patch.date = t.date;
   if (t.paymentMethod !== undefined) patch.paymentMethod = t.paymentMethod;
   if (t.creditCardId !== undefined) patch.creditCardId = t.creditCardId;
+  if (t.accountId !== undefined) patch.accountId = t.accountId;
+  if (t.transferAccountId !== undefined) patch.transferAccountId = t.transferAccountId;
   if (t.isRecurring !== undefined) patch.isRecurring = t.isRecurring;
   if (t.recurringFrequency !== undefined) patch.recurringFrequency = t.recurringFrequency;
   if (t.tags !== undefined) patch.tags = t.tags;
@@ -153,11 +162,13 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   return ok(toTransactionDTO(row) satisfies TransactionDTO);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
   const existing = await assertOwned(params.id, auth.userId);
   if (!existing) return fail(404, "Transaction not found");
+  const blocked = await guardReconciled(req, auth.userId, [existing]);
+  if (blocked) return blocked;
   await db.delete(transactions).where(eq(transactions.id, params.id));
   if (existing.type === "transfer" && existing.creditCardId) {
     await recomputeCardCycleAllocations(db, auth.userId, existing.creditCardId);

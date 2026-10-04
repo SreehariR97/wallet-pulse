@@ -23,15 +23,21 @@ export function RegisterForm() {
       email: String(form.get("email") ?? "").trim(),
       password: String(form.get("password") ?? ""),
     };
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      if (json.details) setErrors(json.details);
-      else toast.error(json.error ?? "Registration failed");
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (json.details) setErrors(json.details);
+        else toast.error(json.error ?? "Registration failed");
+        setPending(false);
+        return;
+      }
+    } catch {
+      toast.error("Couldn't reach the server. Check your connection and try again.");
       setPending(false);
       return;
     }
@@ -61,7 +67,7 @@ export function RegisterForm() {
       </div>
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
-        <Input id="password" name="password" type="password" autoComplete="new-password" required placeholder="At least 6 characters" />
+        <Input id="password" name="password" type="password" autoComplete="new-password" required minLength={8} placeholder="At least 8 characters" />
         {errors.password && <p className="text-xs font-[500] text-destructive">{errors.password[0]}</p>}
       </div>
       <Button type="submit" className="w-full" disabled={pending}>

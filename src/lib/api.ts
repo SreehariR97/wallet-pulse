@@ -26,3 +26,16 @@ export async function requireUser() {
   }
   return { userId: session.user.id, user: session.user } as const;
 }
+
+/**
+ * True when a write failed on a unique constraint (Postgres 23505). Works
+ * across neon-http, node-postgres and PGlite, which all surface `code`
+ * either on the error or on its `cause`.
+ */
+export function isUniqueViolation(err: unknown): boolean {
+  for (let e: unknown = err, depth = 0; e && depth < 5; depth++) {
+    if (typeof e === "object" && (e as { code?: unknown }).code === "23505") return true;
+    e = typeof e === "object" ? (e as { cause?: unknown }).cause : undefined;
+  }
+  return false;
+}

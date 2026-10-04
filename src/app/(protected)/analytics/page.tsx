@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { AnalyticsView } from "@/components/analytics/analytics-view";
+
+export const metadata: Metadata = { title: "Analytics" };
 
 export const dynamic = "force-dynamic";
 

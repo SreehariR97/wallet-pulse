@@ -1,58 +1,48 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import useSWR from "swr";
+import { format } from "date-fns";
+import { useSyncToUrl } from "@/hooks/useUrlState";
+import { parseMonthParam } from "@/lib/url-state";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { MonthYearPicker } from "@/components/shared/month-year-picker";
 import { SummaryCards, type SummaryData } from "./summary-cards";
 import { ChartCard } from "@/components/charts/chart-container";
-import { TrendChart, type TrendPoint } from "@/components/charts/trend-chart";
-import { CategoryDonut, type CategorySlice } from "@/components/charts/category-donut";
+import { CategoryDonut, TrendChart } from "@/components/charts/lazy";
+import type { TrendPoint } from "@/components/charts/trend-chart";
+import type { CategorySlice } from "@/components/charts/category-donut";
 import { BudgetProgressList, type BudgetProgressItem } from "./budget-progress";
 import { RecentTransactions } from "./recent-transactions";
 import { CardsWidget } from "./cards-widget";
+import { AccountsWidget } from "./accounts-widget";
+import { useAccounts } from "@/hooks/useAccounts";
 import { useMonthRange } from "@/hooks/useMonthRange";
+import { ErrorState } from "@/components/shared/error-state";
+import { revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 import type { TransactionListItem } from "@/types";
 import type { CreditCardSummary } from "@/components/credit-cards/card-tile";
 
 export function DashboardView({ userName, currency }: { userName: string; currency: string }) {
-  const range = useMonthRange();
-  const [summary, setSummary] = React.useState<SummaryData | null>(null);
-  const [trend, setTrend] = React.useState<TrendPoint[]>([]);
-  const [byCategory, setByCategory] = React.useState<CategorySlice[]>([]);
-  const [budgets, setBudgets] = React.useState<BudgetProgressItem[]>([]);
-  const [recent, setRecent] = React.useState<TransactionListItem[]>([]);
-  const [cards, setCards] = React.useState<CreditCardSummary[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      const qs = `from=${range.from}&to=${range.to}`;
-      const [s, t, c, b, r, cc] = await Promise.all([
-        fetch(`/api/analytics/summary?${qs}`).then((r) => r.json()),
-        fetch(`/api/analytics/trends?${qs}&granularity=daily`).then((r) => r.json()),
-        fetch(`/api/analytics/category-breakdown?${qs}&type=expense`).then((r) => r.json()),
-        fetch(`/api/budgets`).then((r) => r.json()),
-        fetch(`/api/transactions?page=1&limit=10&sort=date&order=desc`).then((r) => r.json()),
-        fetch(`/api/credit-cards`).then((r) => r.json()),
-      ]);
-      if (cancelled) return;
-      setSummary(s.data ?? null);
-      setTrend(t.data ?? []);
-      setByCategory(c.data ?? []);
-      setBudgets(b.data ?? []);
-      setRecent(r.data ?? []);
-      setCards(cc.data ?? []);
-      setLoading(false);
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [range.from, range.to]);
+  const searchParams = useSearchParams();
+  const [initialMonth] = React.useState(() => parseMonthParam(searchParams.get("month")));
+  const range = useMonthRange(initialMonth);
+  // The current month is the default, so it stays out of the URL.
+  const monthParam = range.from.slice(0, 7);
+  useSyncToUrl({ month: monthParam === format(new Date(), "yyyy-MM") ? undefined : monthParam });
+  const qs = `from=${range.from}&to=${range.to}`;
+  const summary = useSWR<ApiEnvelope<SummaryData>>(`/api/analytics/summary?${qs}`);
+  const trend = useSWR<ApiEnvelope<TrendPoint[]>>(`/api/analytics/trends?${qs}&granularity=daily`);
+  const byCategory = useSWR<ApiEnvelope<CategorySlice[]>>(`/api/analytics/category-breakdown?${qs}&type=expense`);
+  const budgets = useSWR<ApiEnvelope<BudgetProgressItem[]>>("/api/budgets");
+  const recent = useSWR<ApiEnvelope<TransactionListItem[]>>("/api/transactions?page=1&limit=10&sort=date&order=desc");
+  const cards = useSWR<ApiEnvelope<CreditCardSummary[]>>("/api/credit-cards");
+  const accounts = useAccounts();
+  const all = [summary, trend, byCategory, budgets, recent, cards, accounts];
+  const failed = all.some((r) => r.error);
 
   return (
     <div className="space-y-6">
@@ -79,27 +69,37 @@ export function DashboardView({ userName, currency }: { userName: string; curren
         }
       />
 
-      <SummaryCards data={summary} currency={currency} loading={loading} />
+      {failed && (
+        <ErrorState
+          title="Some of your dashboard didn't load"
+          description="The numbers below may be incomplete. Your data is safe."
+          onRetry={() => void revalidateAll()}
+        />
+      )}
 
-      <CardsWidget cards={cards} currency={currency} />
+      <SummaryCards data={summary.data?.data ?? null} currency={currency} loading={summary.isLoading} />
+
+      <AccountsWidget accounts={accounts.active} currency={currency} />
+
+      <CardsWidget cards={cards.data?.data ?? []} currency={currency} />
 
       <div className="grid gap-4 lg:grid-cols-5">
         <ChartCard
           title="Spending trend"
           description={`Daily income vs expenses · ${range.label}`}
           className="lg:col-span-3"
-          loading={loading}
+          loading={trend.isLoading}
         >
-          <TrendChart data={trend} currency={currency} granularity="daily" mode="area" />
+          <TrendChart data={trend.data?.data ?? []} currency={currency} granularity="daily" mode="area" />
         </ChartCard>
-        <ChartCard title="By category" description="Expense breakdown" className="lg:col-span-2" loading={loading}>
-          <CategoryDonut data={byCategory} currency={currency} />
+        <ChartCard title="By category" description="Expense breakdown" className="lg:col-span-2" loading={byCategory.isLoading}>
+          <CategoryDonut data={byCategory.data?.data ?? []} currency={currency} />
         </ChartCard>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
-        <ChartCard title="Budget progress" description="Top categories" className="lg:col-span-2" loading={loading}>
-          <BudgetProgressList items={budgets} currency={currency} loading={false} />
+        <ChartCard title="Budget progress" description="Top categories" className="lg:col-span-2" loading={budgets.isLoading}>
+          <BudgetProgressList items={budgets.data?.data ?? []} currency={currency} loading={false} />
         </ChartCard>
         <ChartCard
           title="Recent transactions"
@@ -110,9 +110,9 @@ export function DashboardView({ userName, currency }: { userName: string; curren
               <Link href="/transactions">View all</Link>
             </Button>
           }
-          loading={loading}
+          loading={recent.isLoading}
         >
-          <RecentTransactions items={recent} currency={currency} loading={false} />
+          <RecentTransactions items={recent.data?.data ?? []} currency={currency} loading={false} />
         </ChartCard>
       </div>
     </div>

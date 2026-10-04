@@ -13,6 +13,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { apiFetch, errorMessage } from "@/lib/api-client";
 
 export interface MarkStatementIssuedInitial {
   cardId: string;
@@ -74,23 +75,24 @@ export function MarkStatementIssuedDialog({
     e.preventDefault();
     if (!initial) return;
     setPending(true);
-    const res = await fetch(
-      `/api/credit-cards/${initial.cardId}/cycles/${initial.cycleId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cycleCloseDate,
-          paymentDueDate,
-          statementBalance: Number(statementBalance),
-          minimumPayment: Number(minimumPayment),
-        }),
-      },
-    );
-    setPending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to mark statement issued");
+    try {
+      await apiFetch(
+        `/api/credit-cards/${initial.cardId}/cycles/${initial.cycleId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            cycleCloseDate,
+            paymentDueDate,
+            statementBalance: Number(statementBalance),
+            minimumPayment: Number(minimumPayment),
+          }),
+        },
+      );
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to mark statement issued"));
+      return;
+    } finally {
+      setPending(false);
     }
     toast.success("Statement marked as issued");
     onOpenChange(false);

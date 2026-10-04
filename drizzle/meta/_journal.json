@@ -57,6 +57,34 @@
       "when": 1776630303310,
       "tag": "0007_right_bulldozer",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790965935022,
+      "tag": "0008_auth_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790967867254,
+      "tag": "0009_data_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790988541442,
+      "tag": "0010_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790990826775,
+      "tag": "0011_account_reconcile",
+      "breakpoints": true
     }
   ]
 }

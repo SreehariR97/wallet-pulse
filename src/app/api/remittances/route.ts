@@ -19,6 +19,8 @@ import {
 import { TRANSFER_CATEGORY_NAMES } from "@/lib/db/defaults";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import type { RemittanceDTO } from "@/types";
+import { validateAccountLinks } from "@/lib/accounts";
+import { guardReconciled } from "@/lib/reconcile-lock";
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -69,11 +71,14 @@ export async function GET(req: Request) {
       notes: transactions.notes,
       date: transactions.date,
       paymentMethod: transactions.paymentMethod,
+      accountId: transactions.accountId,
+      isRecurring: transactions.isRecurring,
+      recurringFrequency: transactions.recurringFrequency,
     })
     .from(remittances)
     .innerJoin(transactions, eq(remittances.transactionId, transactions.id))
     .where(whereClause)
-    .orderBy(ordering)
+    .orderBy(ordering, asc(remittances.id))
     .limit(q.limit)
     .offset((q.page - 1) * q.limit);
 
@@ -96,6 +101,9 @@ export async function GET(req: Request) {
     notes: r.notes,
     date: r.date,
     paymentMethod: r.paymentMethod,
+    accountId: r.accountId,
+    isRecurring: r.isRecurring,
+    recurringFrequency: r.recurringFrequency,
   }));
   return ok(items satisfies RemittanceDTO[], { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) });
 }
@@ -118,6 +126,7 @@ export async function POST(req: Request) {
     .where(
       and(
         eq(categories.userId, auth.userId),
+        eq(categories.type, "transfer"),
         eq(categories.name, TRANSFER_CATEGORY_NAMES.internationalTransfer),
       ),
     )
@@ -128,6 +137,18 @@ export async function POST(req: Request) {
       "Missing 'International Transfer' category. Run scripts/backfill-transfer-categories.ts.",
     );
   }
+
+  const accountError = await validateAccountLinks(auth.userId, {
+    type: "transfer",
+    creditCardId: null,
+    accountId: r.accountId ?? null,
+    transferAccountId: null,
+  });
+  if (accountError) return fail(400, accountError);
+  const blocked = await guardReconciled(req, auth.userId, [
+    { date: r.date, accountId: r.accountId ?? null, transferAccountId: null },
+  ]);
+  if (blocked) return blocked;
 
   const txId = randomUUID();
   const remitId = randomUUID();
@@ -143,6 +164,7 @@ export async function POST(req: Request) {
     notes: r.notes ?? null,
     date: r.date,
     paymentMethod: r.paymentMethod,
+    accountId: r.accountId ?? null,
     isRecurring: r.isRecurring,
     recurringFrequency: r.isRecurring ? r.recurringFrequency ?? null : null,
     tags: r.tags ?? null,
@@ -202,6 +224,9 @@ export async function POST(req: Request) {
         notes: tx.notes,
         date: tx.date,
         paymentMethod: tx.paymentMethod,
+        accountId: tx.accountId,
+        isRecurring: tx.isRecurring,
+        recurringFrequency: tx.recurringFrequency,
       } satisfies RemittanceDTO,
       { created: true },
     );
@@ -223,7 +248,8 @@ export async function POST(req: Request) {
         ? { name: err.name, message: err.message, stack: err.stack }
         : err,
     });
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return fail(500, `Remittance insert failed: ${message}`);
+    // Details are in the server log above; driver/constraint text stays
+    // out of the response.
+    return fail(500, "Remittance insert failed. Please try again.");
   }
 }

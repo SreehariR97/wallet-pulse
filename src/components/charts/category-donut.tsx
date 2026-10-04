@@ -2,7 +2,8 @@
 import * as React from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatCompactCurrency, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
-import { TOOLTIP_BG, TOOLTIP_BORDER } from "./palette";
+import { TOOLTIP_BG,
+  TOOLTIP_ITEM_STYLE, TOOLTIP_BORDER } from "./palette";
 
 export interface CategorySlice {
   categoryId: string;
@@ -33,7 +34,10 @@ export function CategoryDonut({
   }
 
   return (
-    <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-6">
+    // Wraps: when the card can't fit the 200px donut plus a ~13rem legend
+    // side by side (the dashboard's 2-of-5 column at 1024-1500px), the legend
+    // drops below instead of squeezing its labels to nothing.
+    <div className="flex flex-wrap items-center gap-4 md:gap-6">
       {/*
         Fixed 200x200 square so the donut always has room for its full
         diameter. Previously this was a fluid 1fr column inside a
@@ -43,35 +47,41 @@ export function CategoryDonut({
         Radii are now percentages so the pie scales with the container if
         we ever resize it.
       */}
-      <div className="relative mx-auto h-[200px] w-[200px] shrink-0 md:mx-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="total"
-              nameKey="name"
-              innerRadius="55%"
-              outerRadius="92%"
-              paddingAngle={2}
-              stroke="transparent"
-              onClick={(d: any) => onSliceClick?.(d.payload)}
-              cursor={onSliceClick ? "pointer" : "default"}
-            >
-              {data.map((s) => (
-                <Cell key={s.categoryId} fill={s.color} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                background: TOOLTIP_BG,
-                border: `1px solid ${TOOLTIP_BORDER}`,
-                borderRadius: "0.75rem",
-                fontSize: 12,
-              }}
-              formatter={(value: number, _name, props) => [formatCurrency(value, currency), props.payload?.name]}
-            />
-          </PieChart>
-        </ResponsiveContainer>
+      <div className="relative mx-auto h-[200px] w-[200px] shrink-0">
+        {/* Slices are mouse-only and the legend lists the same values as text. */}
+        <div aria-hidden className="h-full w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="total"
+                nameKey="name"
+                innerRadius="55%"
+                outerRadius="92%"
+                paddingAngle={2}
+                stroke="transparent"
+              // Hidden from assistive tech (see wrapper); keep it out of the tab order too.
+              rootTabIndex={-1}
+                onClick={(d: { payload?: CategorySlice }) => d.payload && onSliceClick?.(d.payload)}
+                cursor={onSliceClick ? "pointer" : "default"}
+              >
+                {data.map((s) => (
+                  <Cell key={s.categoryId} fill={s.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                itemStyle={TOOLTIP_ITEM_STYLE}
+                contentStyle={{
+                  background: TOOLTIP_BG,
+                  border: `1px solid ${TOOLTIP_BORDER}`,
+                  borderRadius: "0.75rem",
+                  fontSize: 12,
+                }}
+                formatter={(value: number, _name, props) => [formatCurrency(value, currency), props.payload?.name]}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <div className="text-[10px] font-[600] uppercase tracking-[0.1em] text-muted-foreground">Total</div>
           <div
@@ -83,12 +93,11 @@ export function CategoryDonut({
         </div>
       </div>
       {/*
-        min-w-0 lets this ul shrink below its min-content width — without it,
-        a flex item defaults to min-width: min-content, so a $10,000,000.00
-        amount inside one of the legend rows pushes the whole ul wider than
-        the card on dashboard widths.
+        A fixed minimum width (rather than min-w-0) so a too-narrow card
+        wraps the legend below the donut instead of crushing the labels;
+        large amounts stay inside it via formatCurrencyAuto's compact form.
       */}
-      <ul className="min-w-0 flex-1 space-y-2 text-sm">
+      <ul className="min-w-[13rem] flex-1 space-y-2 text-sm">
         {data.slice(0, 8).map((s) => {
           const pct = total ? (s.total / total) * 100 : 0;
           return (

@@ -9,29 +9,21 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { CardForm, type CardFormInitial } from "./card-form";
 import { CardTile, type CreditCardSummary } from "./card-tile";
+import useSWR from "swr";
+import { ErrorState } from "@/components/shared/error-state";
+import { apiFetch, errorMessage, jsonBody, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 
 export function CardsView({ currency }: { currency: string }) {
-  const [active, setActive] = React.useState<CreditCardSummary[]>([]);
-  const [archived, setArchived] = React.useState<CreditCardSummary[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const list = useSWR<ApiEnvelope<CreditCardSummary[]>>("/api/credit-cards?includeArchived=1");
+  const rows = list.data?.data ?? [];
+  const active = rows.filter((r) => r.isActive);
+  const archived = rows.filter((r) => !r.isActive);
+  const loading = list.isLoading;
   const [showArchived, setShowArchived] = React.useState(false);
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<CreditCardSummary | null>(null);
   const [confirmArchive, setConfirmArchive] = React.useState<CreditCardSummary | null>(null);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    const res = await fetch("/api/credit-cards?includeArchived=1");
-    const json = await res.json();
-    const rows: CreditCardSummary[] = json.data ?? [];
-    setActive(rows.filter((r) => r.isActive));
-    setArchived(rows.filter((r) => !r.isActive));
-    setLoading(false);
-  }, []);
-
-  React.useEffect(() => {
-    load();
-  }, [load]);
 
   function openNew() {
     setEditing(null);
@@ -43,20 +35,22 @@ export function CardsView({ currency }: { currency: string }) {
   }
 
   async function archive(c: CreditCardSummary) {
-    const res = await fetch(`/api/credit-cards/${c.id}`, { method: "DELETE" });
-    if (!res.ok) return toast.error("Failed to archive card");
-    toast.success("Card archived");
-    load();
+    try {
+      await apiFetch(`/api/credit-cards/${c.id}`, { method: "DELETE" });
+      toast.success("Card archived");
+      await revalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to archive card"));
+    }
   }
   async function unarchive(c: CreditCardSummary) {
-    const res = await fetch(`/api/credit-cards/${c.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: true }),
-    });
-    if (!res.ok) return toast.error("Failed to restore card");
-    toast.success("Card restored");
-    load();
+    try {
+      await apiFetch(`/api/credit-cards/${c.id}`, jsonBody("PATCH", { isActive: true }));
+      toast.success("Card restored");
+      await revalidateAll();
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to restore card"));
+    }
   }
 
   const initialForForm: CardFormInitial | null = editing
@@ -85,7 +79,9 @@ export function CardsView({ currency }: { currency: string }) {
         }
       />
 
-      {loading ? (
+      {list.error && !list.data ? (
+        <ErrorState title="Couldn't load your cards" onRetry={() => void list.mutate()} />
+      ) : loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-52 w-full" />
@@ -153,7 +149,7 @@ export function CardsView({ currency }: { currency: string }) {
         open={formOpen}
         onOpenChange={setFormOpen}
         initial={initialForForm}
-        onSaved={load}
+        onSaved={() => void revalidateAll()}
       />
       <ConfirmDialog
         open={!!confirmArchive}

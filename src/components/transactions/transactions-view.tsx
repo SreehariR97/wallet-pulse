@@ -3,6 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { Download, Loader2, Plus, Search, Trash2, Receipt } from "lucide-react";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,67 +13,77 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { TransactionFilters, type TxFilterValues } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
+import useSWR from "swr";
+import { useSearchParams } from "next/navigation";
+import { useSyncToUrl } from "@/hooks/useUrlState";
+import { parseTransactionsUrl, transactionsUrlParams, type TxSortKey, type TxSortOrder } from "@/lib/url-state";
+import { ErrorState } from "@/components/shared/error-state";
+import { apiFetch, errorMessage, jsonBody, revalidateAll, type ApiEnvelope } from "@/lib/api-client";
 import type { TransactionListItem, ListMeta } from "@/types";
 
-type SortKey = "date" | "amount" | "description" | "createdAt";
-type SortOrder = "asc" | "desc";
+type SortKey = TxSortKey;
 
 export function TransactionsView({ currency }: { currency: string }) {
-  const [filters, setFilters] = React.useState<TxFilterValues>({});
-  const [search, setSearch] = React.useState("");
-  const [debouncedSearch, setDebouncedSearch] = React.useState("");
-  const [sort, setSort] = React.useState<SortKey>("date");
-  const [order, setOrder] = React.useState<SortOrder>("desc");
-  const [page, setPage] = React.useState(1);
-  const [items, setItems] = React.useState<TransactionListItem[]>([]);
-  const [meta, setMeta] = React.useState<ListMeta | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  // Initial state comes from the URL, so refresh, Back from an edit page and
+  // shared links keep the filters, sort and page.
+  const searchParams = useSearchParams();
+  const [initial] = React.useState(() => parseTransactionsUrl(searchParams));
+  const [filters, setFilters] = React.useState<TxFilterValues>(initial.filters);
+  const [search, setSearch] = React.useState(initial.search);
+  const [sort, setSort] = React.useState<SortKey>(initial.sort);
+  const [order, setOrder] = React.useState<TxSortOrder>(initial.order);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [bulkConfirm, setBulkConfirm] = React.useState(false);
   const [bulkPending, setBulkPending] = React.useState(false);
 
+  // Search and the free-text filters (amounts, tags) are debounced together
+  // so typing "150" is one request, not three.
+  const [debounced, setDebounced] = React.useState({ search: initial.search, filters });
   React.useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    const t = setTimeout(() => setDebounced({ search: search.trim(), filters }), 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, filters]);
 
-  const queryString = React.useMemo(() => {
+  // Everything except the page number. When it changes, the page snaps back
+  // to 1 in the same render (derived below), so there's no extra request
+  // for "new filters, old page".
+  const baseQuery = React.useMemo(() => {
+    const f = debounced.filters;
     const p = new URLSearchParams();
-    p.set("page", String(page));
     p.set("limit", "25");
     p.set("sort", sort);
     p.set("order", order);
-    if (debouncedSearch) p.set("search", debouncedSearch);
-    if (filters.type) p.set("type", filters.type);
-    if (filters.shortcut) p.set("shortcut", filters.shortcut);
-    if (filters.categoryId) p.set("categoryId", filters.categoryId);
-    if (filters.paymentMethod) p.set("paymentMethod", filters.paymentMethod);
-    if (filters.creditCardId) p.set("creditCardId", filters.creditCardId);
-    if (filters.from) p.set("from", filters.from);
-    if (filters.to) p.set("to", filters.to);
-    if (filters.minAmount) p.set("minAmount", filters.minAmount);
-    if (filters.maxAmount) p.set("maxAmount", filters.maxAmount);
-    if (filters.tags) p.set("tags", filters.tags);
+    if (debounced.search) p.set("search", debounced.search);
+    if (f.type) p.set("type", f.type);
+    if (f.shortcut) p.set("shortcut", f.shortcut);
+    if (f.categoryId) p.set("categoryId", f.categoryId);
+    if (f.paymentMethod) p.set("paymentMethod", f.paymentMethod);
+    if (f.creditCardId) p.set("creditCardId", f.creditCardId);
+    if (f.accountId) p.set("accountId", f.accountId);
+    if (f.from) p.set("from", f.from);
+    if (f.to) p.set("to", f.to);
+    if (f.minAmount) p.set("minAmount", f.minAmount);
+    if (f.maxAmount) p.set("maxAmount", f.maxAmount);
+    if (f.tags) p.set("tags", f.tags);
     return p.toString();
-  }, [page, sort, order, debouncedSearch, filters]);
+  }, [debounced, sort, order]);
 
-  const fetchList = React.useCallback(async () => {
-    setLoading(true);
-    const res = await fetch(`/api/transactions?${queryString}`);
-    const json = await res.json();
-    setItems(json.data ?? []);
-    setMeta(json.meta ?? null);
-    setLoading(false);
-  }, [queryString]);
+  const [pageState, setPageState] = React.useState({ base: baseQuery, page: initial.page });
+  const page = pageState.base === baseQuery ? pageState.page : 1;
+  const setPage = (n: number) => setPageState({ base: baseQuery, page: n });
 
   React.useEffect(() => {
-    fetchList();
-  }, [fetchList]);
-
-  React.useEffect(() => {
-    setPage(1);
     setSelected(new Set());
-  }, [debouncedSearch, filters, sort, order]);
+  }, [baseQuery]);
+
+  useSyncToUrl(transactionsUrlParams({ filters: debounced.filters, search: debounced.search, sort, order, page }));
+
+  // SWR only ever renders the response for the current key, so a slow
+  // response for an old filter can't overwrite a newer one.
+  const list = useSWR<ApiEnvelope<TransactionListItem[]>>(`/api/transactions?page=${page}&${baseQuery}`);
+  const items = list.data?.data ?? [];
+  const meta = (list.data?.meta ?? null) as ListMeta | null;
+  const loading = list.isLoading;
 
   function handleSort(key: SortKey) {
     if (sort === key) {
@@ -95,25 +106,25 @@ export function TransactionsView({ currency }: { currency: string }) {
     setSelected(all ? new Set(items.map((t) => t.id)) : new Set());
   }
 
+  const guarded = useReconciledWrite();
   async function bulkDelete() {
     setBulkPending(true);
-    const res = await fetch("/api/transactions/bulk", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: Array.from(selected) }),
-    });
-    setBulkPending(false);
-    if (!res.ok) {
-      toast.error("Failed to delete transactions");
-      return;
+    try {
+      const ids = Array.from(selected);
+      await guarded((headers) => apiFetch("/api/transactions/bulk", { ...jsonBody("DELETE", { ids }), headers }));
+      toast.success(`${selected.size} transactions deleted`);
+      setSelected(new Set());
+      await revalidateAll();
+    } catch (err) {
+      if (err instanceof WriteCancelled) return;
+      toast.error(errorMessage(err, "Failed to delete transactions"));
+    } finally {
+      setBulkPending(false);
     }
-    toast.success(`${selected.size} transactions deleted`);
-    setSelected(new Set());
-    fetchList();
   }
 
   function exportCsv() {
-    window.location.href = `/api/export?format=csv&${queryString}`;
+    window.location.href = `/api/export?format=csv&${baseQuery}`;
   }
 
   const total = meta?.total ?? 0;
@@ -143,7 +154,14 @@ export function TransactionsView({ currency }: { currency: string }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative w-full sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search description or notes…" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input
+                type="search"
+                aria-label="Search transactions"
+                placeholder="Search description or notes…"
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
             <TransactionFilters values={filters} onChange={setFilters} />
           </div>
@@ -163,7 +181,9 @@ export function TransactionsView({ currency }: { currency: string }) {
             </div>
           )}
 
-          {loading ? (
+          {list.error && !list.data ? (
+            <ErrorState title="Couldn't load transactions" onRetry={() => void list.mutate()} />
+          ) : loading ? (
             <div className="space-y-2">
               {Array.from({ length: 8 }).map((_, i) => (
                 <Skeleton key={i} className="h-14 w-full" />
@@ -193,13 +213,12 @@ export function TransactionsView({ currency }: { currency: string }) {
               onToggleSelect={toggleSelect}
               onToggleSelectAll={toggleSelectAll}
               onDeleted={(id) => {
-                setItems((xs) => xs.filter((x) => x.id !== id));
                 setSelected((s) => {
                   const next = new Set(s);
                   next.delete(id);
                   return next;
                 });
-                if (meta) setMeta({ ...meta, total: Math.max(0, meta.total - 1) });
+                void revalidateAll();
               }}
             />
           )}
@@ -210,10 +229,10 @@ export function TransactionsView({ currency }: { currency: string }) {
                 Page {page} of {totalPages}
               </span>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>
                   Previous
                 </Button>
-                <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
                   Next
                 </Button>
               </div>

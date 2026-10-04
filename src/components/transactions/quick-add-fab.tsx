@@ -1,6 +1,5 @@
 "use client";
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import {
   DropdownMenu,
@@ -19,10 +18,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { TransactionForm } from "./transaction-form";
-import { PayCardDialog } from "@/components/credit-cards/pay-card-dialog";
-import { RemittanceForm } from "@/components/remittances/remittance-form";
+import dynamic from "next/dynamic";
+
+// The button is on every page; the three forms behind it load on first use.
+const TransactionForm = dynamic(() => import("./transaction-form").then((m) => m.TransactionForm), { ssr: false });
+const PayCardDialog = dynamic(() => import("@/components/credit-cards/pay-card-dialog").then((m) => m.PayCardDialog), {
+  ssr: false,
+});
+const RemittanceForm = dynamic(() => import("@/components/remittances/remittance-form").then((m) => m.RemittanceForm), {
+  ssr: false,
+});
 import { cn } from "@/lib/utils";
+import { revalidateAll } from "@/lib/api-client";
 import type { TxType } from "@/types";
 
 type QuickAction =
@@ -31,7 +38,6 @@ type QuickAction =
   | { kind: "sendMoney" };
 
 export function QuickAddFab({ currency }: { currency: string }) {
-  const router = useRouter();
   const [action, setAction] = React.useState<QuickAction | null>(null);
 
   const txInitial = action?.kind === "tx" ? { type: action.type } : undefined;
@@ -39,9 +45,11 @@ export function QuickAddFab({ currency }: { currency: string }) {
   const payOpen = action?.kind === "payCard";
   const sendMoneyOpen = action?.kind === "sendMoney";
 
+  // Every page reads through the SWR cache, so a write here has to refresh
+  // it — router.refresh() alone never reached the client-fetched views.
   function close() {
     setAction(null);
-    router.refresh();
+    void revalidateAll();
   }
 
   return (
@@ -117,24 +125,23 @@ export function QuickAddFab({ currency }: { currency: string }) {
             initial={txInitial}
             showSaveAndAddAnother
             redirectOnSave={false}
-            onSuccess={close}
+            onSuccess={(_tx, { addAnother }) => {
+              // "Save & add another" keeps the dialog open; the form resets itself.
+              if (!addAnother) close();
+            }}
+            onCancel={() => setAction(null)}
           />
         </DialogContent>
       </Dialog>
 
-      <PayCardDialog
-        open={payOpen}
-        onOpenChange={(o) => !o && setAction(null)}
-        currency={currency}
-        onSaved={close}
-      />
+      {/* Mounted only when chosen, so their code isn't fetched up front. */}
+      {payOpen && (
+        <PayCardDialog open onOpenChange={(o) => !o && setAction(null)} currency={currency} onSaved={close} />
+      )}
 
-      <RemittanceForm
-        open={sendMoneyOpen}
-        onOpenChange={(o) => !o && setAction(null)}
-        initial={null}
-        onSaved={close}
-      />
+      {sendMoneyOpen && (
+        <RemittanceForm open onOpenChange={(o) => !o && setAction(null)} initial={null} onSaved={close} />
+      )}
     </>
   );
 }

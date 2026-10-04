@@ -1,21 +1,30 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
-import { format } from "date-fns";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { db } from "@/lib/db";
-import { categories, transactions } from "@/lib/db/schema";
+import * as schema from "@/lib/db/schema";
+import { categories, transactions, type Category } from "@/lib/db/schema";
 import { fail, requireUser } from "@/lib/api";
+import { MAX_MONEY } from "@/lib/validations/common";
+import { importText, parseImportDate, type DateOrder } from "@/lib/import";
+import { validateAccountLinks } from "@/lib/accounts";
+import { guardReconciled } from "@/lib/reconcile-lock";
 
 type ImportRow = {
-  date?: string;
-  type?: string;
-  category?: string;
-  amount?: string | number;
-  description?: string;
-  notes?: string | null;
-  paymentMethod?: string;
-  tags?: string | null;
+  date?: unknown;
+  type?: unknown;
+  category?: unknown;
+  amount?: unknown;
+  description?: unknown;
+  notes?: unknown;
+  paymentMethod?: unknown;
+  tags?: unknown;
 };
+
+// 5000 rows x 13 columns would sit right at Postgres's 65,535 bind-parameter
+// limit in one INSERT; chunk well below it.
+const INSERT_CHUNK = 1000;
 
 const PAYMENT_METHODS = new Set(["cash", "credit_card", "debit_card", "bank_transfer", "upi", "other"]);
 const TYPES = new Set([
@@ -51,12 +60,32 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   if (!body || !Array.isArray(body.rows)) return fail(400, "Invalid payload: expected { rows: [...] }");
-  const rows = body.rows as ImportRow[];
+  const rows = body.rows as unknown[];
   if (rows.length === 0) return fail(400, "No rows to import");
   if (rows.length > 5000) return fail(400, "Too many rows (max 5000 per import)");
+  const dateOrder: DateOrder = body.dateOrder === "DMY" ? "DMY" : "MDY";
+  // A bank export belongs to one account: every imported row joins it.
+  let accountId: string | null = null;
+  if (body.accountId != null) {
+    if (typeof body.accountId !== "string" || body.accountId.length > 64) return fail(400, "Invalid account");
+    accountId = body.accountId;
+    const accountError = await validateAccountLinks(auth.userId, {
+      type: "income",
+      creditCardId: null,
+      accountId,
+      transferAccountId: null,
+    });
+    if (accountError) return fail(400, accountError);
+  }
 
   const userCats = await db.select().from(categories).where(eq(categories.userId, auth.userId));
-  const catByName = new Map(userCats.map((c) => [c.name.toLowerCase(), c]));
+  // Several categories can share a name across types ("Gifts" as expense and
+  // income); pick the one whose type fits the row.
+  const catsByName = new Map<string, Category[]>();
+  for (const c of userCats) {
+    const key = c.name.toLowerCase();
+    catsByName.set(key, [...(catsByName.get(key) ?? []), c]);
+  }
   const fallbackExpense =
     userCats.find((c) => c.type === "expense" && c.name === "Miscellaneous") ??
     userCats.find((c) => c.type === "expense");
@@ -68,44 +97,49 @@ export async function POST(req: Request) {
   const fallbackTransfer =
     userCats.find((c) => c.type === "transfer") ?? fallbackExpense;
 
-  // Two-pass: first validate every row and build the insert payload, then
-  // commit the batch. That way we never leave a partial import behind even
-  // if one row is malformed.
+  // Validate every row first; rows with errors are skipped and reported,
+  // and all valid rows are then inserted in one atomic unit.
   const inserts: Array<typeof transactions.$inferInsert> = [];
   const errors: { row: number; error: string }[] = [];
 
-  rows.forEach((r, idx) => {
-    const type = (r.type ?? "expense").toLowerCase();
+  rows.forEach((raw, idx) => {
+    if (!raw || typeof raw !== "object") {
+      errors.push({ row: idx + 1, error: "Invalid row" });
+      return;
+    }
+    const r = raw as ImportRow;
+    const type = String(r.type ?? "").trim().toLowerCase() || "expense";
     if (!TYPES.has(type)) {
-      errors.push({ row: idx + 1, error: `Invalid type "${r.type}"` });
+      errors.push({ row: idx + 1, error: `Invalid type "${String(r.type).slice(0, 40)}"` });
       return;
     }
 
     const amountNum = Number(r.amount);
-    if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      errors.push({ row: idx + 1, error: `Invalid amount "${r.amount}"` });
+    if (!Number.isFinite(amountNum) || amountNum < 0.01 || amountNum > MAX_MONEY) {
+      errors.push({ row: idx + 1, error: `Invalid amount "${String(r.amount).slice(0, 40)}"` });
       return;
     }
 
-    if (!r.date) {
+    if (r.date === undefined || r.date === null || r.date === "") {
       errors.push({ row: idx + 1, error: "Missing date" });
       return;
     }
-    const parsedDate = new Date(String(r.date));
-    if (isNaN(parsedDate.getTime())) {
-      errors.push({ row: idx + 1, error: `Invalid date "${r.date}"` });
+    const civilDate = parseImportDate(r.date, dateOrder);
+    if (!civilDate) {
+      errors.push({ row: idx + 1, error: `Invalid date "${String(r.date).slice(0, 40)}"` });
       return;
     }
-    // transactions.date is a `date` column; extract civil day via date-fns
-    // format (local-TZ day, matching how browser-side defaults are emitted).
-    const civilDate = format(parsedDate, "yyyy-MM-dd");
 
-    const description = (r.description ?? "").trim() || "Imported transaction";
+    const description = importText(r.description, 200) ?? "Imported transaction";
 
+    const categoryType = LOAN_TYPES.has(type) ? "loan" : type;
     let categoryId: string | undefined;
-    if (r.category) {
-      const match = catByName.get(String(r.category).toLowerCase());
-      if (match) categoryId = match.id;
+    const categoryName = importText(r.category, 200);
+    if (categoryName) {
+      const named = catsByName.get(categoryName.toLowerCase()) ?? [];
+      // A same-named category of another type (an "expense" row naming the
+      // income category "Salary") falls through to the type's default.
+      categoryId = named.find((c) => c.type === categoryType)?.id;
     }
     if (!categoryId) {
       const fb = LOAN_TYPES.has(type)
@@ -122,8 +156,9 @@ export async function POST(req: Request) {
       categoryId = fb.id;
     }
 
-    const paymentMethod = r.paymentMethod && PAYMENT_METHODS.has(r.paymentMethod)
-      ? (r.paymentMethod as PaymentMethodSql)
+    const method = String(r.paymentMethod ?? "").trim().toLowerCase();
+    const paymentMethod = PAYMENT_METHODS.has(method)
+      ? (method as PaymentMethodSql)
       : ("other" as PaymentMethodSql);
 
     inserts.push({
@@ -134,17 +169,38 @@ export async function POST(req: Request) {
       amount: String(amountNum),
       currency: auth.user.currency ?? "USD",
       description,
-      notes: r.notes || null,
+      notes: importText(r.notes, 2000),
       date: civilDate,
       paymentMethod,
+      accountId,
       isRecurring: false,
-      tags: r.tags || null,
+      tags: importText(r.tags, 500),
     });
   });
 
+  if (accountId && inserts.length > 0) {
+    const blocked = await guardReconciled(
+      req,
+      auth.userId,
+      inserts.map((i) => ({ date: i.date, accountId, transferAccountId: null })),
+    );
+    if (blocked) return blocked;
+  }
+
   if (inserts.length > 0) {
-    // Postgres handles multi-row inserts natively; one round-trip for the batch.
-    await db.insert(transactions).values(inserts);
+    const chunks: Array<typeof inserts> = [];
+    for (let i = 0; i < inserts.length; i += INSERT_CHUNK) chunks.push(inserts.slice(i, i + INSERT_CHUNK));
+    // All chunks commit together or not at all. Dispatch per CLAUDE.md.
+    const maybeBatch = db as { batch?: unknown };
+    if (typeof maybeBatch.batch === "function") {
+      const neonDb = db as NeonHttpDatabase<typeof schema>;
+      const [first, ...rest] = chunks.map((c) => neonDb.insert(transactions).values(c));
+      await neonDb.batch([first, ...rest]);
+    } else {
+      await db.transaction(async (trx) => {
+        for (const c of chunks) await trx.insert(transactions).values(c);
+      });
+    }
   }
 
   return NextResponse.json(

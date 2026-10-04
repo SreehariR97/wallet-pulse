@@ -20,7 +20,8 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on mo
 
 - **Privacy by design** — your data lives in your own Postgres database (local or Neon), no telemetry, no third-party aggregators, no bank linking.
 - **Full CRUD workflow** for transactions, categories, and budgets, with bulk operations and advanced filtering.
-- **Rich analytics** — trend charts, category breakdowns, spending heatmap, month-over-month comparison, payment-method distribution.
+- **Rich analytics** — trend charts, category breakdowns, spending heatmap, month-over-month comparison, payment-method distribution. Switch between a **spending** view (card purchases count when made) and a **cash-flow** view (money actually leaving your accounts — card purchases count when you pay the card), across all accounts or one.
+- **Accounts** — checking, savings, cash and wallets with an opening balance and a live computed balance. Transfers between your own accounts move money without counting as spending; card payments and remittances can record which account paid. **Reconcile** an account against a bank statement: see the difference, close it with a dated balance adjustment, and get flagged if a later edit puts it out of sync. Reconciled transactions are locked: changing their amount, date or account asks for confirmation first.
 - **Budgets with alerts** — per-category or overall, with progress bars that flip to warning/destructive when you exceed them.
 - **Loan tracking** — first-class transaction types for money lent, borrowed, and repaid, so loans don't pollute your income/expense totals.
 - **Credit cards with real statement history** — multiple cards, computed balance and utilization, per-cycle breakdown by category, and a dedicated `credit_card_cycles` table that stores real close/due dates, issued statement balances, and payment progress. "Mark statement issued" flips a projected cycle into a real one; the "Pay card" shortcut auto-allocates payments to the right cycle; past-due cycles surface with a red dot on the card tile.
@@ -55,8 +56,9 @@ WalletPulse is a production-grade, Mint / YNAB-style expense tracker built on mo
 | Database | **Postgres** via **Neon serverless driver** (`@neondatabase/serverless`) |
 | ORM & migrations | **Drizzle ORM** + **drizzle-kit** |
 | Authentication | **NextAuth v5** (Auth.js) — credentials provider, JWT strategy |
-| Forms & validation | **react-hook-form** + **Zod** |
-| Client state | **Zustand** |
+| Forms & validation | Controlled React forms + **Zod** (server-side, shared schemas) |
+| Data fetching | **SWR** over a shared `apiFetch` client (`src/lib/api-client.ts`) |
+| Client state | **Zustand** (categories store) |
 | Notifications | **sonner** |
 | CSV | **papaparse** |
 | Package manager | **pnpm** |
@@ -151,6 +153,17 @@ The demo user ships with a handful of transactions and two budgets (Groceries $4
 | `pnpm db:studio` | Open Drizzle Studio on port 4983 to browse the DB |
 | `pnpm db:seed` | Seed default categories + demo user |
 | `pnpm db:bootstrap-dev` | Create demo + sample users with seeded transactions (one-shot, idempotent) |
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs `lint`, `type-check`, `test:run` and `build`
+on Node 22 for every pull request and every push to `main`. No database or
+secrets are needed: API tests use in-memory PGlite, and the db client is
+lazy so the build never connects. To block merges on red CI, mark the
+**Lint, type-check, test, build** check as required under
+*Settings → Branches → Branch protection rules* for `main`.
+Dependabot (`.github/dependabot.yml`) opens a weekly grouped PR for
+minor/patch bumps and separate PRs for major versions.
 
 ---
 

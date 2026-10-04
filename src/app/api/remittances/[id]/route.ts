@@ -6,6 +6,8 @@ import { remittances, transactions } from "@/lib/db/schema";
 import { remittanceUpdateSchema } from "@/lib/validations/remittance";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import type { RemittanceDetailDTO, HardDeletedIdDTO } from "@/types";
+import { validateAccountLinks } from "@/lib/accounts";
+import { balanceChanged, guardReconciled, type LedgerState } from "@/lib/reconcile-lock";
 
 type TransactionPatch = Partial<
   Omit<typeof transactions.$inferInsert, "id" | "userId" | "createdAt" | "updatedAt">
@@ -34,6 +36,7 @@ function toDetailDTO(row: LoadedRow): RemittanceDetailDTO {
     notes: row.notes,
     date: row.date,
     paymentMethod: row.paymentMethod,
+    accountId: row.accountId,
     isRecurring: row.isRecurring,
     recurringFrequency: row.recurringFrequency,
     tags: row.tags,
@@ -59,6 +62,7 @@ async function loadOwned(userId: string, id: string) {
       notes: transactions.notes,
       date: transactions.date,
       paymentMethod: transactions.paymentMethod,
+      accountId: transactions.accountId,
       isRecurring: transactions.isRecurring,
       recurringFrequency: transactions.recurringFrequency,
       tags: transactions.tags,
@@ -104,6 +108,33 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (p.recurringFrequency !== undefined) txSet.recurringFrequency = p.recurringFrequency;
   if (p.tags !== undefined) txSet.tags = p.tags;
   if (p.fromCurrency !== undefined) txSet.currency = p.fromCurrency;
+  if (p.accountId !== undefined) {
+    const accountError = await validateAccountLinks(
+      auth.userId,
+      { type: "transfer", creditCardId: null, accountId: p.accountId, transferAccountId: null },
+      { accountId: existing.accountId, transferAccountId: null },
+    );
+    if (accountError) return fail(400, accountError);
+    txSet.accountId = p.accountId;
+  }
+
+  const before: LedgerState = {
+    type: "transfer",
+    amount: existing.amount,
+    date: existing.date,
+    accountId: existing.accountId,
+    transferAccountId: null,
+  };
+  const after: LedgerState = {
+    ...before,
+    amount: txSet.amount ?? before.amount,
+    date: txSet.date ?? before.date,
+    accountId: p.accountId === undefined ? before.accountId : p.accountId,
+  };
+  if (balanceChanged(before, after)) {
+    const blocked = await guardReconciled(req, auth.userId, [before, after]);
+    if (blocked) return blocked;
+  }
 
   const remitSet: RemittancePatch = {};
   if (p.fromCurrency !== undefined) remitSet.fromCurrency = p.fromCurrency;
@@ -169,12 +200,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return ok(row ? (toDetailDTO(row) satisfies RemittanceDetailDTO) : null);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireUser();
   if ("error" in auth) return auth.error;
 
   const existing = await loadOwned(auth.userId, params.id);
   if (!existing) return fail(404, "Remittance not found");
+  const blocked = await guardReconciled(req, auth.userId, [
+    { date: existing.date, accountId: existing.accountId, transferAccountId: null },
+  ]);
+  if (blocked) return blocked;
 
   // Deleting the transaction cascades to the remittance row via FK.
   await db

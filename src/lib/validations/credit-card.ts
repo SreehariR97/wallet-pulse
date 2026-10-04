@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoDate, moneyAmount, MAX_MONEY } from "./common";
 
 // Phase 2 of the cycle-history migration: the form now collects real dates,
 // not day-of-month integers. The server derives statementDay/paymentDueDay
@@ -6,7 +7,6 @@ import { z } from "zod";
 // populated (dropped in Phase 5). statement_balance / minimum_payment are
 // optional — when both are present, the cycle row is stored as real
 // (isProjected=false); otherwise it's a projected framework.
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)");
 
 export const creditCardCreateSchema = z
   .object({
@@ -21,12 +21,12 @@ export const creditCardCreateSchema = z
       .number()
       .positive("Credit limit must be greater than 0")
       .max(99999999999.99, "Credit limit exceeds maximum value"),
-    lastStatementCloseDate: isoDate,
-    paymentDueDate: isoDate,
+    lastStatementCloseDate: isoDate(),
+    paymentDueDate: isoDate(),
     // Both optional. When both are present, the cycle row stores a real
     // statement; otherwise a projected framework.
-    statementBalance: z.coerce.number().nonnegative().optional(),
-    minimumPayment: z.coerce.number().nonnegative().optional(),
+    statementBalance: z.coerce.number().nonnegative().max(MAX_MONEY).optional(),
+    minimumPayment: z.coerce.number().nonnegative().max(MAX_MONEY).optional(),
     // Fallback used when the stored cycle minimum is null.
     minimumPaymentPercent: z.coerce.number().min(0).max(100).default(2),
     sortOrder: z.coerce.number().default(0),
@@ -53,10 +53,10 @@ export const creditCardUpdateSchema = z
       .positive()
       .max(99999999999.99)
       .optional(),
-    lastStatementCloseDate: isoDate.optional(),
-    paymentDueDate: isoDate.optional(),
-    statementBalance: z.coerce.number().nonnegative().optional(),
-    minimumPayment: z.coerce.number().nonnegative().optional(),
+    lastStatementCloseDate: isoDate().optional(),
+    paymentDueDate: isoDate().optional(),
+    statementBalance: z.coerce.number().nonnegative().max(MAX_MONEY).optional(),
+    minimumPayment: z.coerce.number().nonnegative().max(MAX_MONEY).optional(),
     minimumPaymentPercent: z.coerce.number().min(0).max(100).optional(),
     sortOrder: z.coerce.number().optional(),
     isActive: z.boolean().optional(),
@@ -81,10 +81,10 @@ export const creditCardUpdateSchema = z
 // arrived", balance and minimum are known quantities.
 export const markStatementIssuedSchema = z
   .object({
-    cycleCloseDate: isoDate,
-    paymentDueDate: isoDate,
-    statementBalance: z.coerce.number().nonnegative(),
-    minimumPayment: z.coerce.number().nonnegative(),
+    cycleCloseDate: isoDate(),
+    paymentDueDate: isoDate(),
+    statementBalance: z.coerce.number().nonnegative().max(MAX_MONEY),
+    minimumPayment: z.coerce.number().nonnegative().max(MAX_MONEY),
   })
   .refine((v) => v.paymentDueDate > v.cycleCloseDate, {
     message: "Payment due date must be after the statement close date",
@@ -92,12 +92,11 @@ export const markStatementIssuedSchema = z
   });
 
 export const creditCardPaySchema = z.object({
-  amount: z.coerce
-    .number()
-    .positive("Amount must be greater than 0")
-    .max(99999999999.99, "Amount exceeds maximum value"),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
+  amount: moneyAmount(),
+  date: isoDate("Invalid date"),
   notes: z.string().max(2000).optional().nullable(),
+  // Account the payment comes from (optional).
+  accountId: z.string().max(64).optional().nullable(),
 });
 
 export const cycleQuerySchema = z.object({

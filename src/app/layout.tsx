@@ -11,8 +11,10 @@ const interTight = Inter_Tight({
 });
 
 export const metadata: Metadata = {
-  title: "WalletPulse — Personal Expense Tracking",
+  // Pages export `metadata = { title: "Budgets" }` → "Budgets · WalletPulse".
+  title: { default: "WalletPulse — Personal Expense Tracking", template: "%s · WalletPulse" },
   description: "Privacy-first personal finance tracking. Self-hosted, beautiful, and fast.",
+  ...(process.env.NEXTAUTH_URL ? { metadataBase: new URL(process.env.NEXTAUTH_URL) } : {}),
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

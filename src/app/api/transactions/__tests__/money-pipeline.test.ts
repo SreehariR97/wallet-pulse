@@ -9,6 +9,7 @@
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import * as schema from "@/lib/db/schema";
+import { sql } from "drizzle-orm";
 import {
   makeTestDb,
   seedTwoUsers,
@@ -186,10 +187,13 @@ describe("Money pipeline — precision edge cases (Group B)", () => {
     expect(row!.amount).toBe(10.56);
   });
 
-  it("B2: zero — DB-stored '0' round-trips as number 0 (bypasses Zod .positive())", async () => {
-    // Zod rejects 0 at the route (transactionCreateSchema .positive()), so
-    // we seed directly. The READ side (what this test exercises) must still
+  it("B2: zero — a legacy DB-stored '0' round-trips as number 0", async () => {
+    // Zod and the transactions_amount_positive CHECK both reject 0 now, but
+    // the CHECK is NOT VALID, so rows written before migration 0009 can
+    // still hold 0. Recreate that state: insert with the constraint off,
+    // then restore it exactly as the migration added it. The READ side must
     // surface the value as number 0 — not null, not "0", not "0.00".
+    await currentDb.execute(sql`ALTER TABLE transactions DROP CONSTRAINT transactions_amount_positive`);
     await currentDb.insert(schema.transactions).values({
       id: "tx-zero",
       userId: A.userId,
@@ -199,6 +203,9 @@ describe("Money pipeline — precision edge cases (Group B)", () => {
       description: "zero",
       date: TX_DATE,
     });
+    await currentDb.execute(
+      sql`ALTER TABLE transactions ADD CONSTRAINT transactions_amount_positive CHECK (amount > 0) NOT VALID`,
+    );
     asA();
     const res = (await txListGet(getReq("http://localhost/api/transactions"))) as Response;
     const body = await res.json();
@@ -206,6 +213,20 @@ describe("Money pipeline — precision edge cases (Group B)", () => {
     expect(row).toBeDefined();
     expect(typeof row!.amount).toBe("number");
     expect(row!.amount).toBe(0);
+  });
+
+  it("B2b: zero — the database rejects a new zero amount even if a route skipped Zod", async () => {
+    await expect(
+      currentDb.insert(schema.transactions).values({
+        id: "tx-zero-new",
+        userId: A.userId,
+        categoryId: A.catId,
+        type: "expense",
+        amount: "0",
+        description: "zero",
+        date: TX_DATE,
+      }),
+    ).rejects.toThrow(/transactions_amount_positive/);
   });
 
   it("B3: negative — POST /api/transactions with amount=-5.25 is rejected by Zod with 400", async () => {

@@ -12,6 +12,7 @@ declare module "next-auth" {
   interface User {
     id?: string;
     currency?: string;
+    sessionVersion?: number;
   }
 }
 
@@ -26,6 +27,7 @@ export const authConfig = {
       if (user) {
         token.id = user.id ?? token.sub ?? "";
         token.currency = user.currency ?? "USD";
+        token.sv = user.sessionVersion ?? 0;
       }
       return token;
     },
@@ -47,9 +49,10 @@ export const authConfig = {
       const isPublic = PUBLIC_PATHS.includes(path);
 
       if (!isPublic && !isLoggedIn) return false;
-      if (isLoggedIn && (path === "/login" || path === "/register")) {
-        return Response.redirect(new URL("/dashboard", nextUrl));
-      }
+      // The "already signed in → skip /login" redirect lives in the (auth)
+      // layout, not here: middleware can't see the DB, so it would treat a
+      // revoked session as signed in while the protected layout (which does
+      // check) sends it back to /login — an infinite redirect loop.
       return true;
     },
   },

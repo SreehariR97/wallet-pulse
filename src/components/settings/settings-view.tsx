@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ImportDialog } from "./import-dialog";
 import { CURRENCIES } from "@/lib/utils";
+import { apiFetch, errorMessage, jsonBody, revalidateAll } from "@/lib/api-client";
 
 interface Profile {
   id: string;
@@ -45,47 +46,45 @@ export function SettingsView({ initial }: { initial: Profile }) {
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
     setSavingProfile(true);
-    const res = await fetch("/api/user/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        email,
-        currency,
-        monthlyBudget: monthlyBudget ? Number(monthlyBudget) : null,
-      }),
-    });
-    setSavingProfile(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to update profile");
+    try {
+      await apiFetch(
+        "/api/user/profile",
+        jsonBody("PUT", { name, email, currency, monthlyBudget: monthlyBudget ? Number(monthlyBudget) : null }),
+      );
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to update profile"));
+      return;
+    } finally {
+      setSavingProfile(false);
     }
-    toast.success("Profile updated. Sign in again to see currency change everywhere.");
+    toast.success("Profile updated");
+    // Currency is re-read from the DB on every request, so a refresh picks
+    // it up everywhere (server-rendered props and the client cache).
     router.refresh();
+    void revalidateAll();
   }
 
   async function savePassword(e: React.FormEvent) {
     e.preventDefault();
     setSavingPassword(true);
-    const res = await fetch("/api/user/password", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentPassword, newPassword }),
-    });
-    setSavingPassword(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to change password");
+    try {
+      await apiFetch("/api/user/password", jsonBody("PUT", { currentPassword, newPassword }));
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to change password"));
+      return;
+    } finally {
+      setSavingPassword(false);
     }
-    toast.success("Password changed");
-    setCurrentPassword("");
-    setNewPassword("");
+    // The server revoked every session on password change, this one included.
+    toast.success("Password changed. Please sign in with your new password.");
+    await signOut({ callbackUrl: "/login" });
   }
 
   async function deleteAccount() {
-    const res = await fetch("/api/user/profile", { method: "DELETE" });
-    if (!res.ok) {
-      toast.error("Failed to delete account");
+    try {
+      await apiFetch("/api/user/profile", { method: "DELETE" });
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to delete account"));
       return;
     }
     toast.success("Account deleted");
@@ -104,18 +103,18 @@ export function SettingsView({ initial }: { initial: Profile }) {
           <CardContent>
             <form onSubmit={saveProfile} className="space-y-4">
               <div className="grid gap-1.5">
-                <Label>Name</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={64} />
+                <Label htmlFor="settings-name">Name</Label>
+                <Input id="settings-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={64} />
               </div>
               <div className="grid gap-1.5">
-                <Label>Email</Label>
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <Label htmlFor="settings-email">Email</Label>
+                <Input id="settings-email" autoComplete="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-1.5">
-                  <Label>Currency</Label>
+                  <Label htmlFor="settings-currency">Currency</Label>
                   <Select value={currency} onValueChange={setCurrency}>
-                    <SelectTrigger>
+                    <SelectTrigger id="settings-currency">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -128,8 +127,9 @@ export function SettingsView({ initial }: { initial: Profile }) {
                   </Select>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label>Monthly budget (optional)</Label>
+                  <Label htmlFor="settings-monthly-budget">Monthly budget (optional)</Label>
                   <Input
+                    id="settings-monthly-budget"
                     type="number"
                     step="0.01"
                     min="0"
@@ -157,12 +157,12 @@ export function SettingsView({ initial }: { initial: Profile }) {
           <CardContent>
             <form onSubmit={savePassword} className="space-y-4">
               <div className="grid gap-1.5">
-                <Label>Current password</Label>
-                <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
+                <Label htmlFor="settings-current-password">Current password</Label>
+                <Input id="settings-current-password" autoComplete="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
               </div>
               <div className="grid gap-1.5">
-                <Label>New password</Label>
-                <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={6} />
+                <Label htmlFor="settings-new-password">New password</Label>
+                <Input id="settings-new-password" autoComplete="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
               </div>
               <div className="flex justify-end">
                 <Button type="submit" disabled={savingPassword || !currentPassword || !newPassword}>

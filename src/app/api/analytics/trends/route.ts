@@ -1,15 +1,18 @@
 import { z } from "zod";
+import { isoDate } from "@/lib/validations/common";
 import { and, eq, gte, lte, sql, asc } from "drizzle-orm";
 import { format, startOfMonth } from "date-fns";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
 import { ok, zodFail, requireUser } from "@/lib/api";
 import type { AnalyticsTrendPointDTO } from "@/types";
+import { analyticsScopeSchema, flowPredicates } from "@/lib/analytics-flows";
 
 const querySchema = z.object({
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date (expected YYYY-MM-DD)").optional(),
+  from: isoDate().optional(),
+  to: isoDate().optional(),
   granularity: z.enum(["daily", "monthly"]).default("daily"),
+  ...analyticsScopeSchema,
 });
 
 export async function GET(req: Request) {
@@ -19,7 +22,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams));
   if (!parsed.success) return zodFail(parsed.error);
-  const { from, to, granularity } = parsed.data;
+  const { from, to, granularity, view, accountId } = parsed.data;
+  const flow = flowPredicates(view, accountId);
   const fromDate = from ?? format(startOfMonth(new Date()), "yyyy-MM-dd");
   const toDate = to ?? format(new Date(), "yyyy-MM-dd");
 
@@ -36,8 +40,8 @@ export async function GET(req: Request) {
   const rows = await db
     .select({
       bucket,
-      income: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.type} = 'income' THEN ${transactions.amount} ELSE 0 END), 0)`,
-      expense: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.type} = 'expense' THEN ${transactions.amount} ELSE 0 END), 0)`,
+      income: sql<number>`COALESCE(SUM(CASE WHEN ${flow.inflow} THEN ${transactions.amount} ELSE 0 END), 0)`,
+      expense: sql<number>`COALESCE(SUM(CASE WHEN ${flow.outflow} THEN ${transactions.amount} ELSE 0 END), 0)`,
     })
     .from(transactions)
     .where(

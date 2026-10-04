@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { BudgetsView } from "@/components/budgets/budgets-view";
+
+export const metadata: Metadata = { title: "Budgets" };
 
 export const dynamic = "force-dynamic";
 

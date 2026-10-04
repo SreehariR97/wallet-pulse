@@ -33,5 +33,9 @@ export const AXIS_TICK = "hsl(var(--muted-foreground))";
 export const AXIS_LABEL = "hsl(var(--foreground))";
 export const GRID_STROKE = "hsl(var(--border))";
 export const TOOLTIP_BG = "hsl(var(--popover))";
+// Recharts colors tooltip rows with the series color by default, which
+// fails WCAG contrast for the lighter series (green income: 2.99:1). The
+// swatch next to each row still carries the series color.
+export const TOOLTIP_ITEM_STYLE = { color: "hsl(var(--popover-foreground))" } as const;
 export const TOOLTIP_BORDER = "hsl(var(--border))";
 export const CURSOR_FILL = "hsl(var(--muted))";

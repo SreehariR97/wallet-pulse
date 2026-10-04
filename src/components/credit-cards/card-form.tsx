@@ -13,6 +13,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { apiFetch, errorMessage } from "@/lib/api-client";
 
 export interface CardFormInitial {
   id: string;
@@ -100,15 +101,16 @@ export function CardForm({
     if (statementBalance.trim()) payload.statementBalance = Number(statementBalance);
     if (minimumPayment.trim()) payload.minimumPayment = Number(minimumPayment);
 
-    const res = await fetch(initial ? `/api/credit-cards/${initial.id}` : "/api/credit-cards", {
-      method: initial ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setPending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to save card");
+    try {
+      await apiFetch(initial ? `/api/credit-cards/${initial.id}` : "/api/credit-cards", {
+        method: initial ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      toast.error(errorMessage(err, "Failed to save card"));
+      return;
+    } finally {
+      setPending(false);
     }
     toast.success(initial ? "Card updated" : "Card added");
     onOpenChange(false);

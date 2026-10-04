@@ -15,12 +15,14 @@
     --secondary: 40 21% 89%;
     --secondary-foreground: 30 3% 16%;
     --muted: 40 20% 96%;
-    --muted-foreground: 27 6% 42%;
+    /* 39%/45% lightness: smallest values that clear WCAG AA (4.5:1) for
+       small text on --secondary badges and destructive/15 tints. */
+    --muted-foreground: 27 6% 39%;
     --accent: 258 90% 85%;
     --accent-foreground: 244 38% 16%;
-    --destructive: 0 58% 48%;
+    --destructive: 0 58% 45%;
     --destructive-foreground: 0 0% 100%;
-    --success: 150 30% 38%;
+    --success: 150 30% 35%;
     --success-foreground: 0 0% 100%;
     --warning: 35 70% 45%;
     --warning-foreground: 0 0% 100%;
@@ -52,8 +54,11 @@
     --muted-foreground: 0 0% 72%;
     --accent: 258 90% 85%;
     --accent-foreground: 244 38% 16%;
-    --destructive: 0 62% 55%;
-    --destructive-foreground: 0 0% 100%;
+    /* Lighter red so red text clears WCAG AA on dark surfaces and on
+       destructive/15 tints (55% was 3.3:1); destructive buttons switch to
+       dark text, which reads 6.3:1 on this red (white would be 2.9:1). */
+    --destructive: 0 62% 68%;
+    --destructive-foreground: 244 38% 12%;
     --success: 150 30% 55%;
     --success-foreground: 0 0% 100%;
     --warning: 40 80% 60%;

@@ -3,6 +3,7 @@ import * as React from "react";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useReconciledWrite, WriteCancelled } from "@/components/shared/reconciled-confirm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CURRENCIES, formatFxRate } from "@/lib/utils";
+import { CURRENCIES, formatAmountFor, formatFxRate } from "@/lib/utils";
+import { apiFetch, errorMessage } from "@/lib/api-client";
+import { useAccounts } from "@/hooks/useAccounts";
+import { AccountSelect } from "@/components/accounts/account-select";
 
 export interface RemittanceFormInitial {
   id: string;
@@ -40,6 +44,7 @@ export interface RemittanceFormInitial {
   recipientNote: string | null;
   isRecurring: boolean;
   recurringFrequency: string | null;
+  accountId: string | null;
 }
 
 export function RemittanceForm({
@@ -65,7 +70,10 @@ export function RemittanceForm({
   const [notes, setNotes] = React.useState("");
   const [isRecurring, setIsRecurring] = React.useState(false);
   const [recurringFrequency, setRecurringFrequency] = React.useState<string>("monthly");
+  const [accountId, setAccountId] = React.useState<string | null>(null);
+  const accounts = useAccounts().all;
   const [pending, setPending] = React.useState(false);
+  const guarded = useReconciledWrite();
 
   React.useEffect(() => {
     if (!open) return;
@@ -81,6 +89,7 @@ export function RemittanceForm({
     setNotes(initial?.notes ?? "");
     setIsRecurring(initial?.isRecurring ?? false);
     setRecurringFrequency(initial?.recurringFrequency ?? "monthly");
+    setAccountId(initial?.accountId ?? null);
   }, [open, initial]);
 
   const amountNum = Number(amount);
@@ -108,16 +117,22 @@ export function RemittanceForm({
       isRecurring,
       recurringFrequency: isRecurring ? recurringFrequency : null,
       paymentMethod: initial?.paymentMethod ?? "bank_transfer",
+      accountId,
     };
-    const res = await fetch(initial ? `/api/remittances/${initial.id}` : "/api/remittances", {
-      method: initial ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setPending(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return toast.error(j.error ?? "Failed to save remittance");
+    try {
+      await guarded((headers) =>
+        apiFetch(initial ? `/api/remittances/${initial.id}` : "/api/remittances", {
+          method: initial ? "PATCH" : "POST",
+          body: JSON.stringify(payload),
+          headers,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof WriteCancelled) return;
+      toast.error(errorMessage(err, "Failed to save remittance"));
+      return;
+    } finally {
+      setPending(false);
     }
     toast.success(initial ? "Remittance updated" : "Remittance recorded");
     onOpenChange(false);
@@ -253,7 +268,7 @@ export function RemittanceForm({
               <span className="text-[13px] font-[460] text-muted-foreground tabular-nums">
                 ≈{" "}
                 <span className="font-[540] text-foreground">
-                  {delivered.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatAmountFor(delivered, toCurrency)}
                 </span>{" "}
                 {toCurrency}
                 {rateNum > 0 && (
@@ -264,6 +279,19 @@ export function RemittanceForm({
               </span>
             </div>
           </div>
+
+          {accounts.length > 0 && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="rm-account">Sent from</Label>
+              <AccountSelect
+                id="rm-account"
+                accounts={accounts}
+                value={accountId}
+                onChange={setAccountId}
+                noneLabel="— Not tracked —"
+              />
+            </div>
+          )}
 
           <div className="grid gap-1.5">
             <Label htmlFor="rm-recipient">Recipient (optional)</Label>

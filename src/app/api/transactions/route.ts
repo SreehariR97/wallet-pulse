@@ -2,33 +2,19 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { and, asc, desc, eq, gte, lte, ilike, isNotNull, isNull, sql, or, exists, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { transactions, categories, creditCards, remittances } from "@/lib/db/schema";
+import { accounts, transactions, categories, creditCards, remittances } from "@/lib/db/schema";
+import { alias } from "drizzle-orm/pg-core";
+import { validateAccountLinks } from "@/lib/accounts";
+import { guardReconciled, isReconciledSql } from "@/lib/reconcile-lock";
 import { transactionCreateSchema, transactionQuerySchema } from "@/lib/validations/transaction";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import { recomputeCardCycleAllocations } from "@/lib/credit-card-allocation";
 import type { TransactionDTO, TransactionListItem } from "@/types";
+import { toTransactionDTO } from "@/lib/dto";
 
-function toTransactionDTO(t: typeof transactions.$inferSelect): TransactionDTO {
-  return {
-    id: t.id,
-    userId: t.userId,
-    categoryId: t.categoryId,
-    type: t.type,
-    amount: Number(t.amount),
-    currency: t.currency,
-    description: t.description,
-    notes: t.notes,
-    date: t.date,
-    paymentMethod: t.paymentMethod,
-    creditCardId: t.creditCardId,
-    isRecurring: t.isRecurring,
-    recurringFrequency: t.recurringFrequency,
-    tags: t.tags,
-    receiptUrl: t.receiptUrl,
-    createdAt: t.createdAt.toISOString(),
-    updatedAt: t.updatedAt.toISOString(),
-  };
-}
+
+// The transfer destination is a second join on accounts.
+const transferAccount = alias(accounts, "transfer_account");
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -72,6 +58,9 @@ export async function GET(req: Request) {
     filters.push(or(ilike(transactions.description, s), ilike(transactions.notes, s)));
   }
   if (q.tags) filters.push(ilike(transactions.tags, `%${q.tags}%`));
+  if (q.accountId) {
+    filters.push(or(eq(transactions.accountId, q.accountId), eq(transactions.transferAccountId, q.accountId)));
+  }
 
   const sortCol =
     q.sort === "amount"
@@ -108,13 +97,22 @@ export async function GET(req: Request) {
       creditCardId: transactions.creditCardId,
       creditCardName: creditCards.name,
       creditCardLast4: creditCards.last4,
+      accountId: transactions.accountId,
+      accountName: accounts.name,
+      transferAccountId: transactions.transferAccountId,
+      transferAccountName: transferAccount.name,
+      reconciled: isReconciledSql,
       createdAt: transactions.createdAt,
     })
     .from(transactions)
     .leftJoin(categories, eq(transactions.categoryId, categories.id))
     .leftJoin(creditCards, eq(transactions.creditCardId, creditCards.id))
+    .leftJoin(accounts, eq(transactions.accountId, accounts.id))
+    .leftJoin(transferAccount, eq(transactions.transferAccountId, transferAccount.id))
     .where(whereClause)
-    .orderBy(ordering)
+    // id as tiebreaker: rows sharing a date/amount otherwise come back in
+    // arbitrary order, so offset pages could repeat or skip them.
+    .orderBy(ordering, asc(transactions.id))
     .limit(q.limit)
     .offset((q.page - 1) * q.limit);
 
@@ -137,6 +135,11 @@ export async function GET(req: Request) {
     creditCardId: r.creditCardId,
     creditCardName: r.creditCardName,
     creditCardLast4: r.creditCardLast4,
+    accountId: r.accountId,
+    accountName: r.accountName,
+    transferAccountId: r.transferAccountId,
+    transferAccountName: r.transferAccountName,
+    reconciled: Boolean(r.reconciled),
     createdAt: r.createdAt.toISOString(),
   }));
   return ok(normalized satisfies TransactionListItem[], { total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) });
@@ -176,6 +179,20 @@ export async function POST(req: Request) {
     if (!card) return fail(400, "Invalid credit card");
   }
 
+  const accountError = await validateAccountLinks(auth.userId, {
+    type: t.type,
+    creditCardId: t.creditCardId ?? null,
+    accountId: t.accountId ?? null,
+    transferAccountId: t.transferAccountId ?? null,
+  });
+  if (accountError) return fail(400, accountError);
+
+  // Backdating into a reconciled period changes that statement's balance.
+  const blocked = await guardReconciled(req, auth.userId, [
+    { date: t.date, accountId: t.accountId ?? null, transferAccountId: t.transferAccountId ?? null },
+  ]);
+  if (blocked) return blocked;
+
   const [row] = await db
     .insert(transactions)
     .values({
@@ -190,6 +207,8 @@ export async function POST(req: Request) {
       date: t.date,
       paymentMethod: t.paymentMethod,
       creditCardId: t.creditCardId ?? null,
+      accountId: t.accountId ?? null,
+      transferAccountId: t.transferAccountId ?? null,
       isRecurring: t.isRecurring,
       recurringFrequency: t.isRecurring ? t.recurringFrequency ?? null : null,
       tags: t.tags ?? null,
