@@ -1,5 +1,6 @@
 "use client";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { tooltipNumber } from "./recharts-helpers";
 import { formatCurrency } from "@/lib/utils";
 import {
   AXIS_LABEL,
@@ -41,6 +42,7 @@ export function BudgetChart({ rows, currency }: { rows: BudgetChartRow[]; curren
           data={rows.map((r) => ({ name: r.name, budget: r.amount, spent: r.spent }))}
           layout="vertical"
           margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
+          accessibilityLayer={false}
         >
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} horizontal={false} />
           <XAxis
@@ -66,7 +68,7 @@ export function BudgetChart({ rows, currency }: { rows: BudgetChartRow[]; curren
               borderRadius: "0.75rem",
               fontSize: 12,
             }}
-            formatter={(v: number, n: string) => [formatCurrency(v, currency), n === "budget" ? "Budget" : "Spent"]}
+            formatter={(v, n) => [formatCurrency(tooltipNumber(v), currency), n === "budget" ? "Budget" : "Spent"]}
             cursor={{ fill: CURSOR_FILL, opacity: 0.6 }}
           />
           <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />

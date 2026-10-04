@@ -1,5 +1,6 @@
 "use client";
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { INCOME_FIRST_TOOLTIP, tooltipNumber } from "./recharts-helpers";
 import { format, parseISO } from "date-fns";
 import { formatCompactCurrency, formatCurrency } from "@/lib/utils";
 import {
@@ -86,7 +87,7 @@ export function TrendChart({
       </table>
       <div aria-hidden>
         <ResponsiveContainer width="100%" height={280}>
-          <Chart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+          <Chart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} accessibilityLayer={false}>
             <defs>
               <linearGradient id="gradExpense" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={CHART_DESTRUCTIVE} stopOpacity={0.35} />
@@ -109,7 +110,8 @@ export function TrendChart({
                 fontSize: 12,
               }}
               labelFormatter={(v) => tickFormatter(String(v))}
-              formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
+              formatter={(value, name) => [formatCurrency(tooltipNumber(value), currency), name]}
+              itemSorter={INCOME_FIRST_TOOLTIP}
             />
             {mode === "line" ? (
               <>

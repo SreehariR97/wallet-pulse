@@ -111,6 +111,27 @@ Accounts, the cash-flow view and reconciliation shipped (see CLAUDE.md
   like transactions. A EUR account for a USD user needs FX conversion
   first (separate follow-up).
 
+### Tailwind CSS 4 migration
+
+Dependabot's `tailwindcss` 3 → 4 PR fails to build ("trying to use
+`tailwindcss` directly as a PostCSS plugin"). v4 is a rewrite, not a bump:
+
+- `postcss.config.mjs`: replace `tailwindcss` (+ `autoprefixer`) with
+  `@tailwindcss/postcss`.
+- `globals.css`: `@tailwind base/components/utilities` → `@import "tailwindcss"`;
+  keep `tailwind.config.ts` working via `@config "../../tailwind.config.ts"`
+  first, then move tokens to `@theme` later.
+- `tailwindcss-animate` → `tw-animate-css` (Radix dialog/dropdown/popover
+  enter/exit animations depend on it).
+- Renamed defaults to audit across every page: `shadow-sm`→`shadow-xs`,
+  `rounded-sm`→`rounded-xs`, `outline-none`→`outline-hidden`, `ring` is
+  1px (was 3px), borders default to `currentColor` (was gray-200).
+- Needs Safari 16.4+ / Chrome 111+.
+
+`npx @tailwindcss/upgrade` automates most of it. Verify with the axe scans
+in both themes plus screenshots of every page; contrast tokens in
+`globals.css` were tuned for AA and must not drift.
+
 ### FX rate auto-fetch
 
 Remittances require the user to type the rate manually. Annoying when

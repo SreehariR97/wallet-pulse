@@ -1,5 +1,6 @@
 "use client";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { tooltipNumber } from "./recharts-helpers";
 import { formatCurrency, paymentMethodLabel } from "@/lib/utils";
 import { CHART_PALETTE, TOOLTIP_BG,
   TOOLTIP_ITEM_STYLE, TOOLTIP_BORDER } from "./palette";
@@ -20,7 +21,7 @@ export function PaymentDonut({ data, currency }: { data: PaymentMethodSlice[]; c
       {/* The legend list beside the chart carries the same data as text. */}
       <div aria-hidden>
         <ResponsiveContainer width="100%" height={220}>
-          <PieChart>
+          <PieChart accessibilityLayer={false}>
             <Pie data={data} dataKey="total" nameKey="paymentMethod" innerRadius={50} outerRadius={85} paddingAngle={2} stroke="transparent" rootTabIndex={-1}>
               {data.map((d, i) => (
                 <Cell key={d.paymentMethod} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
@@ -34,7 +35,7 @@ export function PaymentDonut({ data, currency }: { data: PaymentMethodSlice[]; c
                 borderRadius: "0.75rem",
                 fontSize: 12,
               }}
-              formatter={(v: number, n) => [formatCurrency(v, currency), paymentMethodLabel(String(n))]}
+              formatter={(v, n) => [formatCurrency(tooltipNumber(v), currency), paymentMethodLabel(String(n))]}
             />
           </PieChart>
         </ResponsiveContainer>

@@ -1,5 +1,6 @@
 "use client";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { INCOME_FIRST_LEGEND, INCOME_FIRST_TOOLTIP, tooltipNumber } from "./recharts-helpers";
 import { format, parseISO } from "date-fns";
 import { formatCompactCurrency, formatCurrency } from "@/lib/utils";
 import {
@@ -51,10 +52,11 @@ export function IncomeExpenseBars({
             fontSize: 12,
           }}
           labelFormatter={(v) => tickFormatter(String(v))}
-          formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
+          formatter={(value, name) => [formatCurrency(tooltipNumber(value), currency), name]}
+          itemSorter={INCOME_FIRST_TOOLTIP}
           cursor={{ fill: CURSOR_FILL, opacity: 0.6 }}
         />
-        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} itemSorter={INCOME_FIRST_LEGEND} />
         <Bar dataKey="income" name={labels.income} fill={CHART_SUCCESS} radius={[4, 4, 0, 0]} />
         <Bar dataKey="expense" name={labels.expense} fill={CHART_DESTRUCTIVE} radius={[4, 4, 0, 0]} />
       </BarChart>
