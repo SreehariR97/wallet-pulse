@@ -20,11 +20,15 @@
  *           fallback as the detail GET's currentCycleStart).
  */
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db";
-import { categories, creditCards, creditCardCycles, transactions } from "@/lib/db/schema";
+import { accounts, categories, creditCards, creditCardCycles, transactions } from "@/lib/db/schema";
+import { isReconciledSql } from "@/lib/reconcile-lock";
 import { cycleQuerySchema } from "@/lib/validations/credit-card";
 import { ok, fail, zodFail, requireUser } from "@/lib/api";
 import type { CreditCardCycleDTO, TransactionListItem } from "@/types";
+
+const transferAccount = alias(accounts, "transfer_account");
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireUser();
@@ -135,10 +139,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       categoryName: categories.name,
       categoryIcon: categories.icon,
       categoryColor: categories.color,
+      accountId: transactions.accountId,
+      accountName: accounts.name,
+      transferAccountId: transactions.transferAccountId,
+      transferAccountName: transferAccount.name,
+      reconciled: isReconciledSql,
       createdAt: transactions.createdAt,
     })
     .from(transactions)
     .leftJoin(categories, eq(transactions.categoryId, categories.id))
+    .leftJoin(accounts, eq(transactions.accountId, accounts.id))
+    .leftJoin(transferAccount, eq(transactions.transferAccountId, transferAccount.id))
     .where(and(...baseFilters))
     .orderBy(desc(transactions.date));
 
@@ -158,6 +169,11 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     categoryName: r.categoryName,
     categoryIcon: r.categoryIcon,
     categoryColor: r.categoryColor,
+    accountId: r.accountId,
+    accountName: r.accountName,
+    transferAccountId: r.transferAccountId,
+    transferAccountName: r.transferAccountName,
+    reconciled: Boolean(r.reconciled),
     createdAt: r.createdAt.toISOString(),
   }));
 
