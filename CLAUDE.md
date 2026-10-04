@@ -139,6 +139,8 @@ Payments on a credit card (type=transfer + creditCardId) are allocated to a cycl
 
 The pure allocation rule lives in `src/lib/credit-cards.ts::allocateCycleForPayment` (reference implementation: `computeCycleAmountsPaid`). What gets persisted is its SQL port, `reallocateCardCycles` in `src/lib/credit-card-allocation.ts` — one UPDATE that re-derives every cycle's `amount_paid` from scratch, so divergence self-corrects. A test pins the SQL to the JS rule on randomized data.
 
+`GET /api/credit-cards/:id/cycles` also lists each cycle's `payments` (with the paying account) by running `allocateCycleForPayment` over the cycles oldest-first — read-only, so it's fine in JS; a test checks the listed payments always sum to `amount_paid`. The card page shows "from <account>" per statement, and the pay dialog defaults "Paid from" to the account of the card's latest payment.
+
 **Never compute `amount_paid` in JS and write it back** — two concurrent payments each read a snapshot and one overwrites the other (reproduced: 20 parallel $10 payments recorded $30). Instead, in one atomic unit: `lockCard` (SELECT … FOR UPDATE on the card row) first, then your writes, then `reallocateCardCycles`. Under READ COMMITTED each statement gets a fresh snapshot, so the UPDATE after the lock sees every committed payment. `recomputeCardCycleAllocations` does exactly this for callers outside a batch. CSV import never links transactions to cards, so it doesn't recompute.
 
 ### Accounts and cash flow

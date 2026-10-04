@@ -107,9 +107,6 @@ transactions; you told us the statement said $Y" diagnostics.
 Accounts, the cash-flow view and reconciliation shipped (see CLAUDE.md
 "Accounts and cash flow"). Left out to keep that PR tight:
 
-- **Card payments as account-to-card transfers in the UI:** the pay
-  dialog records "Paid from", but the card detail page doesn't show
-  which account paid each cycle.
 - **Multi-currency accounts:** every account is in the user's currency,
   like transactions. A EUR account for a USD user needs FX conversion
   first (separate follow-up).

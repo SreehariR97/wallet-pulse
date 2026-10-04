@@ -288,7 +288,7 @@ export function CardDetailView({
               <span
                 className={
                   headerStatus.tone === "success"
-                    ? "inline-flex items-center rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-emerald-600 dark:text-emerald-400"
+                    ? "inline-flex items-center rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-400"
                     : headerStatus.tone === "destructive"
                       ? "inline-flex items-center rounded-md bg-destructive/15 px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-destructive"
                       : "inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-[600] uppercase tracking-[0.08em] text-muted-foreground"

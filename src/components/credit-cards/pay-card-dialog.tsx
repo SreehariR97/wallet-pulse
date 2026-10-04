@@ -27,6 +27,7 @@ import { formatCurrency } from "@/lib/utils";
 import { apiFetch, errorMessage } from "@/lib/api-client";
 import useSWR from "swr";
 import type { ApiEnvelope } from "@/lib/api-client";
+import type { CreditCardCycleRowDTO } from "@/types";
 import { useAccounts } from "@/hooks/useAccounts";
 import { AccountSelect } from "@/components/accounts/account-select";
 
@@ -58,6 +59,8 @@ export function PayCardDialog({
   const [date, setDate] = React.useState(format(new Date(), "yyyy-MM-dd"));
   const [notes, setNotes] = React.useState("");
   const [accountId, setAccountId] = React.useState<string | null>(null);
+  // Once the user picks "Paid from" themselves, stop defaulting it.
+  const [accountTouched, setAccountTouched] = React.useState(false);
   const [pending, setPending] = React.useState(false);
   const guarded = useReconciledWrite();
 
@@ -77,6 +80,7 @@ export function PayCardDialog({
     setDate(format(new Date(), "yyyy-MM-dd"));
     setNotes("");
     setAccountId(null);
+    setAccountTouched(false);
   }, [open, presetCardId]);
 
   // Pick the preset (or first) card once the list is available.
@@ -86,6 +90,23 @@ export function PayCardDialog({
   }, [open, presetCardId, cards]);
 
   const selected = cards.find((c) => c.id === cardId);
+
+  // Default "Paid from" to whichever active account paid this card last.
+  // Same SWR key as the card page's cycle history, so usually cached.
+  const historyReq = useSWR<ApiEnvelope<CreditCardCycleRowDTO[]>>(
+    open && cardId ? `/api/credit-cards/${cardId}/cycles` : null,
+  );
+  const lastPaidFrom = React.useMemo(() => {
+    const payments = (historyReq.data?.data ?? []).flatMap((c) => c.payments);
+    const last = payments.reduce<(typeof payments)[number] | null>(
+      (best, p) => (!best || p.date > best.date ? p : best),
+      null,
+    );
+    return last?.accountId && accounts.some((a) => a.id === last.accountId && a.isActive) ? last.accountId : null;
+  }, [historyReq.data, accounts]);
+  React.useEffect(() => {
+    if (open && !accountTouched) setAccountId(lastPaidFrom);
+  }, [open, accountTouched, lastPaidFrom]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -185,7 +206,10 @@ export function PayCardDialog({
                   id="pay-account"
                   accounts={accounts}
                   value={accountId}
-                  onChange={setAccountId}
+                  onChange={(v) => {
+                    setAccountTouched(true);
+                    setAccountId(v);
+                  }}
                   noneLabel="— Not tracked —"
                 />
               </div>
