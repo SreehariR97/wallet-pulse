@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { tooltipNumber } from "./recharts-helpers";
 import { formatCompactCurrency, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
 import { TOOLTIP_BG,
   TOOLTIP_ITEM_STYLE, TOOLTIP_BORDER } from "./palette";
@@ -51,7 +52,7 @@ export function CategoryDonut({
         {/* Slices are mouse-only and the legend lists the same values as text. */}
         <div aria-hidden className="h-full w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
+            <PieChart accessibilityLayer={false}>
               <Pie
                 data={data}
                 dataKey="total"
@@ -77,7 +78,7 @@ export function CategoryDonut({
                   borderRadius: "0.75rem",
                   fontSize: 12,
                 }}
-                formatter={(value: number, _name, props) => [formatCurrency(value, currency), props.payload?.name]}
+                formatter={(value, _name, item) => [formatCurrency(tooltipNumber(value), currency), item.payload?.name]}
               />
             </PieChart>
           </ResponsiveContainer>

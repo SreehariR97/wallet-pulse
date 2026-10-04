@@ -29,7 +29,7 @@ import { markStatementIssuedSchema } from "@/lib/validations/credit-card";
 import { ok, fail, zodFail, requireUser, isUniqueViolation } from "@/lib/api";
 import { nextProjectedCycleDates } from "@/lib/credit-cards";
 import { lockCard, reallocateCardCycles } from "@/lib/credit-card-allocation";
-import type { CreditCardCycleRowDTO } from "@/types";
+import type { CreditCardCycleRecordDTO } from "@/types";
 
 export async function PATCH(
   req: Request,
@@ -147,7 +147,7 @@ export async function PATCH(
       isProjected: issuedRow.isProjected,
       createdAt: issuedRow.createdAt.toISOString(),
       updatedAt: issuedRow.updatedAt.toISOString(),
-    } satisfies CreditCardCycleRowDTO);
+    } satisfies CreditCardCycleRecordDTO);
   } catch (err) {
     if (isUniqueViolation(err)) return alreadyIssued();
     console.error("[PATCH /api/credit-cards/:id/cycles/:cycleId] failed", {

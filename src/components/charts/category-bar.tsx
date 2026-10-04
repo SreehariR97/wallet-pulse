@@ -1,5 +1,6 @@
 "use client";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { tooltipNumber } from "./recharts-helpers";
 import { formatCompactCurrency, formatCurrency } from "@/lib/utils";
 import { AXIS_LABEL, AXIS_TICK, CURSOR_FILL, TOOLTIP_BG,
   TOOLTIP_ITEM_STYLE, TOOLTIP_BORDER } from "./palette";
@@ -36,7 +37,7 @@ export function CategoryBar({ data, currency }: { data: CategorySlice[]; currenc
             borderRadius: "0.75rem",
             fontSize: 12,
           }}
-          formatter={(v: number) => formatCurrency(v, currency)}
+          formatter={(v) => formatCurrency(tooltipNumber(v), currency)}
           cursor={{ fill: CURSOR_FILL, opacity: 0.6 }}
         />
         <Bar dataKey="total" radius={[0, 6, 6, 0]}>

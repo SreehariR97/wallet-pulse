@@ -139,6 +139,8 @@ Payments on a credit card (type=transfer + creditCardId) are allocated to a cycl
 
 The pure allocation rule lives in `src/lib/credit-cards.ts::allocateCycleForPayment` (reference implementation: `computeCycleAmountsPaid`). What gets persisted is its SQL port, `reallocateCardCycles` in `src/lib/credit-card-allocation.ts` — one UPDATE that re-derives every cycle's `amount_paid` from scratch, so divergence self-corrects. A test pins the SQL to the JS rule on randomized data.
 
+`GET /api/credit-cards/:id/cycles` also lists each cycle's `payments` (with the paying account) by running `allocateCycleForPayment` over the cycles oldest-first — read-only, so it's fine in JS; a test checks the listed payments always sum to `amount_paid`. The card page shows "from <account>" per statement, and the pay dialog defaults "Paid from" to the account of the card's latest payment.
+
 **Never compute `amount_paid` in JS and write it back** — two concurrent payments each read a snapshot and one overwrites the other (reproduced: 20 parallel $10 payments recorded $30). Instead, in one atomic unit: `lockCard` (SELECT … FOR UPDATE on the card row) first, then your writes, then `reallocateCardCycles`. Under READ COMMITTED each statement gets a fresh snapshot, so the UPDATE after the lock sees every committed payment. `recomputeCardCycleAllocations` does exactly this for callers outside a batch. CSV import never links transactions to cards, so it doesn't recompute.
 
 ### Accounts and cash flow
@@ -181,6 +183,7 @@ Constraints worth knowing (migration 0009): one budget per `(user, category, per
 - After any write call `revalidateAll()` — one transaction changes the dashboard, budgets, analytics and card balances at once. `router.refresh()` alone never reaches client-fetched views.
 - Show `ErrorState` (with a retry) when a request failed; `EmptyState` only for a successful empty result.
 - Charts load through `src/components/charts/lazy.tsx` (Recharts stays out of first-load JS); import chart types from the chart modules directly.
+- Recharts 3: Tooltip formatters get `number | string | array` — convert with `tooltipNumber()` from `src/components/charts/recharts-helpers.ts`. Tooltip and Legend now sort items alphabetically by default; pass an explicit sorter (e.g. `INCOME_FIRST_TOOLTIP` / `INCOME_FIRST_LEGEND`) when order matters. A chart inside an `aria-hidden` wrapper (with an sr-only table) must set `accessibilityLayer={false}`, or its SVG becomes a hidden focus stop (axe `aria-hidden-focus`).
 - Route boundaries: `src/app/(protected)/{loading,error,not-found}.tsx`, plus `src/app/{not-found,global-error}.tsx`.
 - List/view state that a user would expect to survive refresh or a shared link (transactions filters/search/sort/page/account, dashboard month, analytics range/view/account) lives in the URL: read initial values with `useSearchParams()` through the parsers in `src/lib/url-state.ts` (they drop malformed values), write with `useSyncToUrl()` from `src/hooks/useUrlState.ts` (history.replaceState — no server round-trip). Keep `src/lib/url-state.ts` free of Zod: it ships to the browser.
 

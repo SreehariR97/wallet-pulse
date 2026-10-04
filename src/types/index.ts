@@ -272,11 +272,10 @@ export interface CreditCardDetailDTO extends CreditCardDTO {
   currentIsProjected: boolean;
 }
 
-/** A single row from credit_card_cycles, surfaced by GET /:id/cycles and
- *  PATCH /:id/cycles/:cycleId. Named `...RowDTO` because the existing
- *  `CreditCardCycleDTO` below is the older transactions-in-window shape
- *  for GET /:id/cycle (different endpoint, different concept). */
-export interface CreditCardCycleRowDTO {
+/** A single row from credit_card_cycles (the PATCH /:id/cycles/:cycleId
+ *  response). Not to be confused with `CreditCardCycleDTO` below, the older
+ *  transactions-in-window shape for GET /:id/cycle. */
+export interface CreditCardCycleRecordDTO {
   id: string;
   cardId: string;
   cycleCloseDate: string;
@@ -287,6 +286,25 @@ export interface CreditCardCycleRowDTO {
   isProjected: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** GET /:id/cycles — a cycle plus the payments allocated to it. */
+export interface CreditCardCycleRowDTO extends CreditCardCycleRecordDTO {
+  /**
+   * The payments counted in amountPaid (same allocation rule), oldest
+   * first, with the account each came from. Their amounts sum to amountPaid.
+   */
+  payments: CreditCardCyclePaymentDTO[];
+}
+
+export interface CreditCardCyclePaymentDTO {
+  /** The payment transaction's id. */
+  id: string;
+  date: string;
+  amount: number;
+  /** Null when the payment wasn't recorded against an account. */
+  accountId: string | null;
+  accountName: string | null;
 }
 
 /** GET /:id/cycle — composite of card summary + window + aggregates + tx list. */
