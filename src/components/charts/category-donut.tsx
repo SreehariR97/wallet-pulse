@@ -2,7 +2,7 @@
 import * as React from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { tooltipNumber } from "./recharts-helpers";
-import { formatCompactCurrency, formatCurrency, formatCurrencyAuto } from "@/lib/utils";
+import { formatCurrency, formatCurrencyAuto } from "@/lib/utils";
 import { TOOLTIP_BG,
   TOOLTIP_ITEM_STYLE, TOOLTIP_BORDER } from "./palette";
 
@@ -89,7 +89,8 @@ export function CategoryDonut({
             className="mt-0.5 max-w-[120px] text-center font-heading text-[20px] font-[540] leading-[1] tracking-[-0.02em] tabular-nums"
             title={formatCurrency(total, currency)}
           >
-            {formatCompactCurrency(total, currency)}
+            {/* Full precision ("$42.50") until it would outgrow the hole; then "$12.3K". */}
+            {formatCurrencyAuto(total, currency, { compactThreshold: 10_000 })}
           </div>
         </div>
       </div>
