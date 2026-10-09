@@ -128,9 +128,37 @@ Dependabot's `tailwindcss` 3 → 4 PR fails to build ("trying to use
   1px (was 3px), borders default to `currentColor` (was gray-200).
 - Needs Safari 16.4+ / Chrome 111+.
 
+Bump `tailwind-merge` to 3.x in the same change: v3 only understands
+Tailwind 4 class names (on v3 `cn("outline-none", "outline")` keeps both),
+so it must not land before the CSS does. Dependabot majors for both are
+ignored in `.github/dependabot.yml` until then.
+
 `npx @tailwindcss/upgrade` automates most of it. Verify with the axe scans
 in both themes plus screenshots of every page; contrast tokens in
 `globals.css` were tuned for AA and must not drift.
+
+### Next.js 16 migration
+
+Dependabot's `next` 14 → 16 PR fails CI at `next lint`, which Next 16
+removed. It's a migration, not a bump; the `next`, `react`, `react-dom` and
+`@types/react*` majors are ignored in `.github/dependabot.yml` until it's done:
+
+- React 19 + `@types/react`/`@types/react-dom` 19 (Next 15+ App Router
+  requires it). Check Radix, Recharts, sonner and SWR peer ranges.
+- Async request APIs: `params`/`searchParams` are Promises in pages and
+  route handlers (13 dynamic-segment files under `src/app`), and
+  `cookies()`/`headers()` must be awaited. `npx @next/codemod@latest
+  upgrade` handles most of it.
+- Lint: replace `next lint` with the ESLint CLI, ESLint 9 flat config
+  (`eslint.config.mjs` from `.eslintrc.json`) and `eslint-config-next` 16.
+- `src/middleware.ts` → `src/proxy.ts` (Next 16 rename). Keep the auth split
+  in CLAUDE.md: it must still import only `auth.config.ts`; confirm
+  NextAuth v5 works with the proxy runtime.
+- `next build` uses Turbopack by default in 16; re-check the CSP in
+  `next.config.mjs` and that Recharts still stays out of first-load JS.
+
+Verify with the full test suite, `pnpm build`, the axe scans in both themes
+and a login → dashboard → transaction-edit smoke test on the preview.
 
 ### FX rate auto-fetch
 

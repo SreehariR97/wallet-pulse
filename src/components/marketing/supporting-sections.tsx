@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Check, X, Github, Shield, Database, Eye } from "lucide-react";
+import { Check, X, Shield, Database, Eye } from "lucide-react";
+import { GithubIcon } from "@/components/marketing/github-icon";
 import { Button } from "@/components/ui/button";
 
 /* ─────────────────────────────────────────────
@@ -259,7 +260,7 @@ export function FinalCta() {
             rel="noopener noreferrer"
             className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/30 bg-transparent px-6 text-sm font-[540] text-white hover:bg-white/10 transition-colors"
           >
-            <Github className="h-4 w-4" />
+            <GithubIcon className="h-4 w-4" />
             Star on GitHub
           </a>
         </div>

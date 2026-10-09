@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Github, Wallet } from "lucide-react";
+import { Wallet } from "lucide-react";
+import { GithubIcon } from "@/components/marketing/github-icon";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -55,9 +56,10 @@ export function MarketingNav() {
             href="https://github.com/SreehariR97/wallet-pulse"
             target="_blank"
             rel="noopener noreferrer"
+            aria-label="GitHub"
             className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-[13px] font-[460] text-white/70 hover:text-white transition-colors"
           >
-            <Github className="h-4 w-4" />
+            <GithubIcon className="h-4 w-4" />
             <span className="hidden md:inline">GitHub</span>
           </a>
           <Button

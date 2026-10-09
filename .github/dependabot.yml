@@ -21,6 +21,21 @@ updates:
       # Must match the Next.js major; upgrade together with `next`.
       - dependency-name: eslint-config-next
         update-types: ["version-update:semver-major"]
+      # Next 15+/16 is a migration (React 19, async request APIs, ESLint
+      # flat config, middleware -> proxy); see FOLLOWUPS.md.
+      - dependency-name: next
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      # v3 supports Tailwind 4 only; upgrade with the Tailwind 4 migration.
+      - dependency-name: tailwind-merge
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

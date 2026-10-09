@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Github, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import { GithubIcon } from "@/components/marketing/github-icon";
 import { Button } from "@/components/ui/button";
 
 export function Hero() {
@@ -100,7 +101,7 @@ export function Hero() {
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 hover:text-white/80 transition-colors"
               >
-                <Github className="h-3.5 w-3.5" />
+                <GithubIcon className="h-3.5 w-3.5" />
                 View on GitHub
               </a>
             </div>
